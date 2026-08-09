@@ -69,6 +69,10 @@ enum ProbeConfiguration {
         applicationSupportDirectory.appendingPathComponent("voices.json")
     }
 
+    static var projectsDirectory: URL {
+        applicationSupportDirectory.appendingPathComponent("Projects", isDirectory: true)
+    }
+
     static var outputDirectory: URL {
         if let override = ProcessInfo.processInfo.environment["LOCAL_AUDIO_PROBE_OUTPUT_DIR"],
            !override.isEmpty {
@@ -85,6 +89,10 @@ enum ProbeConfiguration {
         )
         try FileManager.default.createDirectory(
             at: outputDirectory,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: projectsDirectory,
             withIntermediateDirectories: true
         )
     }
