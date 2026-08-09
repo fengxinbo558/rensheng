@@ -45,6 +45,21 @@ class BenchmarkContractTests(unittest.TestCase):
         self.assertNotIn("<|endofprompt|>", prompt.instruction)
         self.assertNotIn("You are a helpful assistant", prompt.instruction)
 
+    def test_natural_prompt_never_asks_for_emotion_intensity(self) -> None:
+        prompt = build_emotion_prompt("natural", "strong")
+        self.assertNotIn("只带一点情绪", prompt.instruction)
+        self.assertNotIn("情绪清楚", prompt.instruction)
+        self.assertNotIn("情绪更强", prompt.instruction)
+        self.assertIn("不要播音、朗诵或表演", prompt.instruction)
+
+    def test_subtle_emotions_are_bounded_as_daily_conversation(self) -> None:
+        angry = build_emotion_prompt("angry", "subtle").instruction
+        excited = build_emotion_prompt("excited", "subtle").instruction
+        self.assertIn("只带一点情绪", angry)
+        self.assertIn("不要吼叫", angry)
+        self.assertIn("保持日常对话", excited)
+        self.assertIn("不要喊叫", excited)
+
     def test_output_must_stay_inside_results_and_not_replace_reference(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

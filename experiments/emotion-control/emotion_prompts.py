@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 
-PROMPT_VERSION = "cosyvoice3-zh-v1"
+PROMPT_VERSION = "cosyvoice3-zh-v2-conversational"
 SUPPORTED_INTENSITIES = ("subtle", "clear", "strong")
 
 
@@ -19,17 +19,17 @@ class EmotionPrompt:
 
 
 _BASE_INSTRUCTIONS = {
-    "natural": "使用自然、清晰、克制的普通话表达，保持正常语速和真实呼吸，不额外表演情绪",
-    "happy": "用开心而自然的普通话表达，语调明亮，节奏轻快，带真实笑意，不要夸张喊叫",
-    "excited": "用兴奋、充满能量的普通话表达，节奏有冲劲，重音鲜明，保持清楚，不要尖叫",
-    "sad": "用悲伤但克制的普通话表达，语调低落，节奏稍缓，保留停顿和失落感，不要哭喊",
-    "angry": "用愤怒且有压迫感的普通话表达，语气坚定，重音清楚，节奏有力，不要只靠增大音量或失控吼叫",
+    "natural": "像面对熟悉的人正常说话，语速、音高和力度接近参考录音，不要播音、朗诵或表演",
+    "happy": "保持日常对话，只让人听出心情不错，声音略微轻松，不要刻意笑、不要广告腔或舞台腔",
+    "excited": "保持日常对话，只比平时更有精神，语速和重音只略微变化，不要喊叫、不要夸大重音或故意加速",
+    "sad": "像在日常谈话中克制住失落，声音略微低沉、停顿自然，不要哭腔、拖腔或故意压嗓",
+    "angry": "表达冷静而明确的不满，只在关键词上略微加重，不要吼叫、咬牙、压嗓或制造压迫性的表演感",
 }
 
 _INTENSITY_PREFIXES = {
-    "subtle": "请轻微地",
-    "clear": "请明显地",
-    "strong": "请强烈但保持清晰地",
+    "subtle": "只带一点情绪，",
+    "clear": "情绪清楚但不过度，",
+    "strong": "情绪更强一些，但仍像真实对话，",
 }
 
 
@@ -41,10 +41,14 @@ def build_emotion_prompt(emotion: str, intensity: str = "clear") -> EmotionPromp
     if normalized_intensity not in SUPPORTED_INTENSITIES:
         raise ValueError(f"unsupported intensity: {intensity}")
 
-    instruction = (
-        f"{_INTENSITY_PREFIXES[normalized_intensity]}{_BASE_INSTRUCTIONS[normalized_emotion]}。"
-        "请始终保持参考录音中同一个人的音色与身份。"
-    )
+    if normalized_emotion == "natural":
+        expression = _BASE_INSTRUCTIONS[normalized_emotion]
+    else:
+        expression = (
+            f"{_INTENSITY_PREFIXES[normalized_intensity]}"
+            f"{_BASE_INSTRUCTIONS[normalized_emotion]}"
+        )
+    instruction = f"{expression}。请始终保持参考录音中同一个人的音色与身份。"
     return EmotionPrompt(
         emotion=normalized_emotion,
         intensity=normalized_intensity,
