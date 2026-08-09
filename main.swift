@@ -221,9 +221,19 @@ final class ProbeViewModel: ObservableObject {
     }
 }
 
+private enum AppSection: String, CaseIterable, Identifiable {
+    case projects
+    case quick
+
+    var id: String { rawValue }
+    var label: String { self == .projects ? "朗读项目" : "快速生成" }
+}
+
 struct ContentView: View {
     @StateObject private var model = ProbeViewModel()
     @StateObject private var voiceLibrary = VoiceLibrary()
+    @StateObject private var workspaceModel = NarrationWorkspaceModel()
+    @State private var selectedSection: AppSection = .projects
     @State private var showingVoiceEditor = false
     @State private var voiceToDelete: VoiceProfile?
     @State private var showingDeleteConfirmation = false
@@ -235,6 +245,63 @@ struct ContentView: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Picker("应用功能", selection: $selectedSection) {
+                    ForEach(AppSection.allCases) { section in
+                        Text(section.label).tag(section)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 290)
+                .accessibilityLabel("选择朗读项目或快速生成")
+                Spacer()
+                Label("所有处理均在本机完成", systemImage: "lock.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 11)
+            .background(Color(nsColor: .windowBackgroundColor))
+            Divider()
+
+            if selectedSection == .projects {
+                NarrationWorkspaceView(
+                    model: workspaceModel,
+                    voiceLibrary: voiceLibrary,
+                    onManageVoices: { showingVoiceEditor = true }
+                )
+            } else {
+                quickGenerateView
+            }
+        }
+        .frame(minWidth: 980, minHeight: 720)
+        .sheet(isPresented: $showingVoiceEditor) {
+            VoiceEditorView(library: voiceLibrary)
+        }
+        .confirmationDialog(
+            "删除自定义音色？",
+            isPresented: $showingDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("移到废纸篓", role: .destructive) {
+                deleteSelectedVoice()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("“\(voiceToDelete?.name ?? "这个音色")”的本地参考录音和资料将移到废纸篓。")
+        }
+        .alert("无法删除音色", isPresented: $showingDeleteError) {
+            Button("好") {}
+        } message: {
+            Text(deleteError)
+        }
+        .onAppear {
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+    }
+
+    private var quickGenerateView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(spacing: 12) {
@@ -420,30 +487,6 @@ struct ContentView: View {
                 }
             }
             .padding(28)
-        }
-        .frame(minWidth: 760, minHeight: 640)
-        .sheet(isPresented: $showingVoiceEditor) {
-            VoiceEditorView(library: voiceLibrary)
-        }
-        .confirmationDialog(
-            "删除自定义音色？",
-            isPresented: $showingDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("移到废纸篓", role: .destructive) {
-                deleteSelectedVoice()
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("“\(voiceToDelete?.name ?? "这个音色")”的本地参考录音和资料将移到废纸篓。")
-        }
-        .alert("无法删除音色", isPresented: $showingDeleteError) {
-            Button("好") {}
-        } message: {
-            Text(deleteError)
-        }
-        .onAppear {
-            NSApplication.shared.activate(ignoringOtherApps: true)
         }
     }
 

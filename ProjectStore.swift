@@ -1,7 +1,7 @@
 import Foundation
 
-final class ProjectStore {
-    typealias AtomicWriter = (Data, URL) throws -> Void
+final class ProjectStore: @unchecked Sendable {
+    typealias AtomicWriter = @Sendable (Data, URL) throws -> Void
 
     let rootDirectory: URL
     private let atomicWriter: AtomicWriter
