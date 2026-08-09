@@ -1,10 +1,19 @@
 import Foundation
 
 enum ProbeConfiguration {
-    private static let workspaceRoot = URL(
-        fileURLWithPath: "/Users/<user>/Documents/知识笔记",
-        isDirectory: true
-    )
+#if PORTABLE_RUNTIME
+    private static let workspaceRoot = URL(fileURLWithPath: "/", isDirectory: true)
+#else
+    private static let sourceDirectory = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+    private static let workspaceRoot = sourceDirectory
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+#endif
+    private static var isPortable: Bool {
+        Bundle.main.object(forInfoDictionaryKey: "LocalAudioPortableRuntime") as? Bool ?? false
+    }
 
     static let runtime = bundledResource(
         "Sherpa/bin/sherpa-onnx-offline-tts",
@@ -83,6 +92,7 @@ enum ProbeConfiguration {
     private static func bundledResource(_ relativePath: String, fallback: URL) -> URL {
         guard let resources = Bundle.main.resourceURL else { return fallback }
         let candidate = resources.appendingPathComponent(relativePath)
+        if isPortable { return candidate }
         return FileManager.default.fileExists(atPath: candidate.path) ? candidate : fallback
     }
 }

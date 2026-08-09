@@ -31,6 +31,13 @@ struct QwenRuntimeResources: Equatable {
 }
 
 enum RuntimeLocator {
+#if PORTABLE_RUNTIME
+    private static let compiledSourceDirectory = URL(fileURLWithPath: "/", isDirectory: true)
+#else
+    private static let compiledSourceDirectory = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+#endif
+
     static var qwen: QwenRuntimeResources {
         locateQwenResources()
     }
@@ -38,7 +45,9 @@ enum RuntimeLocator {
     static func locateQwenResources(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         resourceURL: URL? = Bundle.main.resourceURL,
-        sourceDirectory: URL = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        sourceDirectory: URL = compiledSourceDirectory,
+        portableMode: Bool = Bundle.main.object(forInfoDictionaryKey: "LocalAudioPortableRuntime") as? Bool
+            ?? false
     ) -> QwenRuntimeResources {
         let workspaceRoot = sourceDirectory
             .deletingLastPathComponent()
@@ -72,13 +81,15 @@ enum RuntimeLocator {
                 environmentKey: "LOCAL_AUDIO_QWEN_PYTHON",
                 environment: environment,
                 bundled: bundledPython,
-                developer: developerProbe.appendingPathComponent(".venv/bin/python")
+                developer: developerProbe.appendingPathComponent(".venv/bin/python"),
+                portableMode: portableMode
             ),
             runner: locate(
                 environmentKey: "LOCAL_AUDIO_QWEN_RUNNER",
                 environment: environment,
                 bundled: bundledRunner,
-                developer: sourceDirectory.appendingPathComponent("Runtime/qwen_runner.py")
+                developer: sourceDirectory.appendingPathComponent("Runtime/qwen_runner.py"),
+                portableMode: portableMode
             ),
             model: locate(
                 environmentKey: "LOCAL_AUDIO_QWEN_MODEL",
@@ -87,7 +98,8 @@ enum RuntimeLocator {
                 developer: developerModels.appendingPathComponent(
                     "qwen3-tts-0.6b-base-8bit",
                     isDirectory: true
-                )
+                ),
+                portableMode: portableMode
             ),
             deepFilterModel: locate(
                 environmentKey: "LOCAL_AUDIO_DEEPFILTER_MODEL",
@@ -96,7 +108,8 @@ enum RuntimeLocator {
                 developer: developerModels.appendingPathComponent(
                     "deepfilternet-mlx/v3",
                     isDirectory: true
-                )
+                ),
+                portableMode: portableMode
             )
         )
     }
@@ -105,8 +118,12 @@ enum RuntimeLocator {
         environmentKey: String,
         environment: [String: String],
         bundled: URL?,
-        developer: URL
+        developer: URL,
+        portableMode: Bool
     ) -> URL {
+        if portableMode, let bundled {
+            return bundled
+        }
         if let override = environment[environmentKey], !override.isEmpty {
             return URL(fileURLWithPath: override)
         }

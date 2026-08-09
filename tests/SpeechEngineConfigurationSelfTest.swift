@@ -70,6 +70,28 @@ struct SpeechEngineConfigurationSelfTest {
         try expect(!unavailable.isAvailable, "缺少生成助手时不应标记为可用")
         try expect(unavailable.missingComponents.contains("自然人声生成助手"), "缺失信息应能让用户理解")
 
+        let portableResources = root.appendingPathComponent("PortableResources", isDirectory: true)
+        let bundledPython = portableResources.appendingPathComponent("QwenRuntime/python/bin/python3.12")
+        let bundledRunner = portableResources.appendingPathComponent("QwenRuntime/qwen_runner.py")
+        let bundledModel = portableResources.appendingPathComponent("Models/Qwen3TTS", isDirectory: true)
+        let bundledDeepFilter = portableResources.appendingPathComponent("Models/DeepFilterNet/v3", isDirectory: true)
+        try createFile(bundledPython, executable: true)
+        try createFile(bundledRunner)
+        try createFile(bundledModel.appendingPathComponent("config.json"))
+        try createFile(bundledDeepFilter.appendingPathComponent("model.safetensors"))
+
+        let portable = RuntimeLocator.locateQwenResources(
+            environment: overrides,
+            resourceURL: portableResources,
+            sourceDirectory: root,
+            portableMode: true
+        )
+        try expect(portable.isAvailable, "便携包内资源应当可用")
+        try expect(portable.python.standardizedFileURL == bundledPython.standardizedFileURL, "便携版不得使用包外运行程序")
+        try expect(portable.runner.standardizedFileURL == bundledRunner.standardizedFileURL, "便携版不得使用包外生成助手")
+        try expect(portable.model.standardizedFileURL == bundledModel.standardizedFileURL, "便携版不得使用包外自然人声模型")
+        try expect(portable.deepFilterModel.standardizedFileURL == bundledDeepFilter.standardizedFileURL, "便携版不得使用包外人声整理模型")
+
         try expect(
             SpeechEngineProgress.generating(completedChunks: 3).statusLabel.contains("3 个片段"),
             "生成进度应显示已完成的片段数"
