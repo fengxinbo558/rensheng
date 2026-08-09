@@ -92,6 +92,22 @@ final class ProjectStore {
         return candidate
     }
 
+    func resolveProjectFileURL(projectID: String, relativePath: String) throws -> URL {
+        guard !relativePath.isEmpty,
+              !relativePath.hasPrefix("/"),
+              (relativePath as NSString).pathComponents.allSatisfy({ $0 != ".." })
+        else {
+            throw ProjectStoreError.invalidRelativePath
+        }
+        let directory = try projectDirectory(for: projectID)
+        let candidate = directory.appendingPathComponent(relativePath).standardizedFileURL
+        let safePrefix = directory.path.hasSuffix("/") ? directory.path : directory.path + "/"
+        guard candidate.path.hasPrefix(safePrefix) else {
+            throw ProjectStoreError.invalidRelativePath
+        }
+        return candidate
+    }
+
     private func createProjectDirectories(at directory: URL) throws {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         for child in ["segments", "previews", "final"] {
@@ -116,6 +132,7 @@ enum ProjectStoreError: LocalizedError {
     case emptyText
     case textTooLong
     case invalidProjectID
+    case invalidRelativePath
     case projectNotFound
 
     var errorDescription: String? {
@@ -126,6 +143,8 @@ enum ProjectStoreError: LocalizedError {
             return "第一版每个项目最多支持 3000 个字"
         case .invalidProjectID:
             return "项目标识无效"
+        case .invalidRelativePath:
+            return "项目文件路径无效"
         case .projectNotFound:
             return "没有找到这个朗读项目"
         }

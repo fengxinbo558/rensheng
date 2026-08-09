@@ -25,6 +25,9 @@ run_test() {
     "${PROJECT_DIR}/ProjectStore.swift" \
     "${PROJECT_DIR}/NarrationRules.swift" \
     "${PROJECT_DIR}/NarrationDirector.swift" \
+    "${PROJECT_DIR}/GenerationJob.swift" \
+    "${PROJECT_DIR}/GenerationJournal.swift" \
+    "${PROJECT_DIR}/GenerationQueue.swift" \
     "${test_source}" \
     -o "${test_root}/${test_name}"
 
@@ -41,3 +44,4 @@ run_test "${TESTS_DIR}/SpeechEngineConfigurationSelfTest.swift"
 run_test "${TESTS_DIR}/ProjectStoreSelfTest.swift"
 run_test "${TESTS_DIR}/ProjectMigrationSelfTest.swift"
 run_test "${TESTS_DIR}/NarrationDirectorSelfTest.swift"
+run_test "${TESTS_DIR}/GenerationQueueSelfTest.swift"

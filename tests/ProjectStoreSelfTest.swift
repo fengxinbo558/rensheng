@@ -110,6 +110,16 @@ struct ProjectStoreSelfTest {
             // 预期结果。
         }
 
+        do {
+            _ = try store.resolveProjectFileURL(
+                projectID: project.id,
+                relativePath: "../outside.wav"
+            )
+            throw ProjectStoreTestFailure.assertion("项目文件路径不得越界")
+        } catch ProjectStoreError.invalidRelativePath {
+            // 预期结果。
+        }
+
         print("ProjectStoreSelfTest: PASS")
     }
 }
