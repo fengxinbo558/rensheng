@@ -10,3 +10,9 @@ __pycache__/
 .runtime-staging/
 .portable-runtime/
 tests/.generated/
+.emotion-runtime/
+.emotion-models/
+experiments/emotion-control/private/
+experiments/emotion-control/results/
+experiments/emotion-control/.env
+experiments/emotion-control/*.wav
