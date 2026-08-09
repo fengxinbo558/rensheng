@@ -24,6 +24,7 @@ private final class FakeSpeechEngine: SpeechEngine, @unchecked Sendable {
     let isAvailable = true
     let unavailableReason: String? = nil
     var calls: [String] = []
+    var seeds: [Int] = []
     var failuresRemaining: [String: Int] = [:]
     var onSynthesize: (() -> Void)?
     private(set) var wasCancelled = false
@@ -33,6 +34,7 @@ private final class FakeSpeechEngine: SpeechEngine, @unchecked Sendable {
         progress: @escaping (SpeechEngineProgress) -> Void
     ) throws -> SpeechSynthesisResult {
         calls.append(request.text)
+        seeds.append(request.seed)
         onSynthesize?()
         if wasCancelled { throw SpeechEngineError.cancelled }
         if let remaining = failuresRemaining[request.text], remaining > 0 {
@@ -107,6 +109,7 @@ struct GenerationQueueSelfTest {
         let firstRun = try queue.run(projectID: project.id, voice: voice)
         try queueExpect(firstRun.completed == 3, "一次临时失败应自动重试并完成")
         try queueExpect(engine.calls == ["第一段。", "第二段。", "第二段。", "第三段。"], "队列顺序或重试次数不正确")
+        try queueExpect(engine.seeds == [42, 42, 43, 42], "自动重试应更换生成变化")
 
         let callsBeforeCache = engine.calls.count
         let cachedRun = try queue.run(projectID: project.id, voice: voice)
@@ -157,6 +160,7 @@ struct GenerationQueueSelfTest {
         )
         _ = try recoveryQueue.run(projectID: recoveryProject.id, voice: voice)
         try queueExpect(recoveryEngine.calls == ["乙。", "丙。"], "恢复时应从第一个未完成段落继续")
+        try queueExpect(recoveryEngine.seeds == [44, 42], "用户再次继续时不应重复失败种子")
 
         var cancellationProject = try store.createProject(
             name: "取消恢复",

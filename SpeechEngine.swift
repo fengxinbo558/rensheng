@@ -19,6 +19,21 @@ struct SpeechSynthesisRequest {
     let voice: VoiceProfile
     let outputURL: URL
     let zipVoiceSteps: Int
+    let seed: Int
+
+    init(
+        text: String,
+        voice: VoiceProfile,
+        outputURL: URL,
+        zipVoiceSteps: Int,
+        seed: Int = 42
+    ) {
+        self.text = text
+        self.voice = voice
+        self.outputURL = outputURL
+        self.zipVoiceSteps = zipVoiceSteps
+        self.seed = seed
+    }
 }
 
 enum SpeechEngineProgress {

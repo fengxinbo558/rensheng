@@ -106,6 +106,9 @@ final class GenerationQueue: @unchecked Sendable {
                     projectID: project.id,
                     relativePath: relativePath
                 )
+                project.segments[index].generationAttempts += 1
+                let generationSeed = 41 + project.segments[index].generationAttempts
+                try store.save(project)
 
                 do {
                     let result = try engine.synthesize(
@@ -113,7 +116,8 @@ final class GenerationQueue: @unchecked Sendable {
                             text: project.segments[index].text,
                             voice: voice,
                             outputURL: output,
-                            zipVoiceSteps: 8
+                            zipVoiceSteps: 8,
+                            seed: generationSeed
                         )
                     ) { _ in }
                     if isCancellationRequested {

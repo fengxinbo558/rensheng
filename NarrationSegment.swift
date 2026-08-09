@@ -117,6 +117,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
     var pause: NarrationPause
     var inputFingerprint: String
     var generationState: SegmentGenerationState
+    var generationAttempts: Int
     var candidates: [NarrationAudioCandidate]
     var selectedCandidateID: String?
     var errorSummary: String?
@@ -140,6 +141,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         self.pause = pause
         inputFingerprint = ""
         generationState = .pending
+        generationAttempts = 0
         candidates = []
         selectedCandidateID = nil
         errorSummary = nil
@@ -159,6 +161,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         inputFingerprint = refreshed
         if changed && invalidateChanged {
             generationState = .pending
+            generationAttempts = 0
             candidates = []
             selectedCandidateID = nil
             errorSummary = nil
@@ -193,7 +196,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case id, order, text, kind, expression, speed, pause, inputFingerprint
-        case generationState, candidates, selectedCandidateID, errorSummary
+        case generationState, generationAttempts, candidates, selectedCandidateID, errorSummary
     }
 
     init(from decoder: Decoder) throws {
@@ -213,6 +216,8 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
             SegmentGenerationState.self,
             forKey: .generationState
         ) ?? .pending
+        generationAttempts = try container.decodeIfPresent(Int.self, forKey: .generationAttempts)
+            ?? (generationState == .failed ? 2 : 0)
         candidates = try container.decodeIfPresent(
             [NarrationAudioCandidate].self,
             forKey: .candidates

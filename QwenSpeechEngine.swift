@@ -41,7 +41,7 @@ final class QwenSpeechEngine: SpeechEngine, @unchecked Sendable {
             "--deepfilter-model", resources.deepFilterModel.path,
             "--deepfilter-wet", "0.5",
             "--streaming-interval", "2",
-            "--seed", "42",
+            "--seed", String(request.seed),
         ]
         var environment = ProcessInfo.processInfo.environment
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
