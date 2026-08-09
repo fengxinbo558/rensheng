@@ -32,7 +32,7 @@ struct AudioQualitySummary: Codable, Hashable {
             if duration < 8 {
                 return "录音偏短，建议录制 10～30 秒"
             }
-            return "检测到较明显的环境底噪，将自动降噪"
+            return "检测到较明显的环境底噪，将使用清理版本"
         case .poor:
             if clippingFraction > 0.0001 {
                 return "录音有爆音，建议降低输入音量后重录"

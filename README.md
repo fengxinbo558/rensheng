@@ -1,55 +1,50 @@
-# LocalAudioProbe
+# 声音导演
 
-这是用 Command Line Tools 直接编译的 macOS SwiftUI 技术探针，不需要完整 Xcode，也不会修改 macOS。
+一款完全离线的 macOS 普通话朗读应用。主流程只需选音色、粘贴文字、点击“生成音频”；应用会自动拆分朗读段落、保存进度并导出成品。
 
 ## 当前功能
 
-- 本地普通话文本转 WAV
-- 内置参考音色试听
-- 麦克风录制自定义音色
-- 导入 WAV、M4A、MP3 等 macOS 可读取的音频
-- 自动检测录音音量、削波和环境底噪
-- 使用 GTCRN 对参考音频进行完全离线降噪
-- 保留原始录音，并支持原音与降噪音色对比试听
-- 快速（4 步）和标准（8 步）两档生成质量
-- 生成结果自动去孤立爆音、抑制停顿底噪并安全限幅
-- 多个自定义音色的本地保存、选择和删除
-- 生成结果永久保存并在访达中显示
+- 普通话长文朗读，单项目最多 3000 字
+- 自动拆分声音片段、安排停顿、失败重试和断点继续
+- 完成后自动生成 WAV、M4A 和 MP3，可发给没安装本应用的人播放
+- 播放、暂停、停止和 0.1×–3.0× 调速，步进 0.1×
+- 高级编辑默认折叠；需要时可修改单段文字、调整节奏、切换候选版本或只重做一段
+- 录制或导入自定义音色，自动检查音量、爆音和环境底噪
+- 干净录音优先保留原声细节；明显底噪时自动使用清理版
+- 根据本机内存和本地资源自动选择生成引擎
 
-自定义音色要求用户填写与参考录音完全一致的原文，并确认声音属于本人或已经得到声音所有者的明确授权。
+自定义音色仅限本人声音，或已获得声音所有者明确授权的声音。
 
-## 构建
+## 设备策略
+
+已有项目基准显示，自然人声路线峰值 physical footprint 约 13.48GB，兼容路线约 590MB。因此 8GB 设备默认使用兼容引擎；16GB 及以上在资源完整时使用自然人声引擎。
+
+真实 M1 8GB 和 16GB 长跑尚未完成，因此当前只能称为候选兼容，不作正式支持承诺。
+
+## 构建与自检
 
 ```sh
-zsh spike/packaging/cli-swiftui-probe/build.sh
+zsh spike/packaging/cli-swiftui-probe/tests/run-self-tests.sh
+BUILD_FLAVOR=portable zsh spike/packaging/cli-swiftui-probe/build.sh
 ```
 
 构建结果：
 
 ```text
-spike/packaging/cli-swiftui-probe/build/LocalAudioProbe.app
-```
-
-## 自检
-
-```sh
-zsh spike/packaging/cli-swiftui-probe/tests/run-self-tests.sh
+spike/packaging/cli-swiftui-probe/build/声音导演.app
 ```
 
 ## 本地数据
 
 ```text
 ~/Library/Application Support/LocalAudioProbe/Voices/
+~/Library/Application Support/LocalAudioProbe/Projects/
 ~/Library/Application Support/LocalAudioProbe/voices.json
 ~/Music/本地音频概览/
 ```
 
-构建后的应用包含 TTS 运行时、语音模型、声码器和约 0.5 MB 的离线降噪模型，大小约 284 MB。运行时不依赖网络，也不会安装或修改系统组件。
+应用运行时不依赖网络，不会安装或修改系统组件。便携构建内含两条生成路线及其本地运行时。
 
-当前应用使用临时签名，适合本机验证。要直接分发给其他 Mac 用户，仍需要后续完成开发者签名和公证。
+当前应用使用临时签名，适合本机验证。要分发给其他 Mac 用户，还需开发者签名和 Apple 公证。
 
-离线降噪模型来自 sherpa-onnx 官方 `speech-enhancement-models` 发布，当前文件 SHA-256：
-
-```text
-e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534
-```
+MP3 导出使用包内 LAME 3.100，其许可证与源码包一同保存在 `Runtime/MP3Encoder/`。

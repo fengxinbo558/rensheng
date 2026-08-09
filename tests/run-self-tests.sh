@@ -20,6 +20,7 @@ run_test() {
     "${PROJECT_DIR}/VoiceLibrary.swift" \
     "${PROJECT_DIR}/RuntimeLocator.swift" \
     "${PROJECT_DIR}/SpeechEngine.swift" \
+    "${PROJECT_DIR}/DeviceSynthesisPolicy.swift" \
     "${PROJECT_DIR}/NarrationSegment.swift" \
     "${PROJECT_DIR}/NarrationProject.swift" \
     "${PROJECT_DIR}/ProjectStore.swift" \
@@ -45,6 +46,7 @@ run_test() {
 run_test "${TESTS_DIR}/VoiceLibrarySelfTest.swift"
 run_test "${TESTS_DIR}/LegacyVoiceMigrationSelfTest.swift"
 run_test "${TESTS_DIR}/SpeechEngineConfigurationSelfTest.swift"
+run_test "${TESTS_DIR}/DeviceSynthesisPolicySelfTest.swift"
 run_test "${TESTS_DIR}/ProjectStoreSelfTest.swift"
 run_test "${TESTS_DIR}/ProjectMigrationSelfTest.swift"
 run_test "${TESTS_DIR}/NarrationDirectorSelfTest.swift"

@@ -5,7 +5,8 @@ SCRIPT_DIR="${0:A:h}"
 WORKSPACE_ROOT="${SCRIPT_DIR:h:h:h}"
 BUILD_FLAVOR="${BUILD_FLAVOR:-developer}"
 OUTPUT_ROOT="${SCRIPT_DIR}/build"
-APP_PATH="${OUTPUT_ROOT}/LocalAudioProbe.app"
+APP_PATH="${OUTPUT_ROOT}/声音导演.app"
+LEGACY_APP_PATH="${OUTPUT_ROOT}/LocalAudioProbe.app"
 CONTENTS_PATH="${APP_PATH}/Contents"
 MACOS_PATH="${CONTENTS_PATH}/MacOS"
 RESOURCES_PATH="${CONTENTS_PATH}/Resources"
@@ -41,11 +42,14 @@ for required_path in \
   fi
 done
 
-if [[ "${APP_PATH}" != "${OUTPUT_ROOT}/LocalAudioProbe.app" ]]; then
+if [[ "${APP_PATH}" != "${OUTPUT_ROOT}/声音导演.app" ]]; then
   print -u2 -- "拒绝清理意外的应用路径：${APP_PATH}"
   exit 2
 fi
 rm -rf "${APP_PATH}"
+if [[ "${LEGACY_APP_PATH}" == "${OUTPUT_ROOT}/LocalAudioProbe.app" ]]; then
+  rm -rf "${LEGACY_APP_PATH}"
+fi
 mkdir -p "${MACOS_PATH}" "${RESOURCES_PATH}/Models" "${RESOURCES_PATH}/Fixtures"
 cp "${SCRIPT_DIR}/Info.plist" "${CONTENTS_PATH}/Info.plist"
 /usr/bin/ditto "${SHERPA_SOURCE}" "${RESOURCES_PATH}/Sherpa"

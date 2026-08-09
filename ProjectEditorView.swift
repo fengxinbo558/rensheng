@@ -5,6 +5,8 @@ struct ProjectEditorView: View {
     @ObservedObject var voiceLibrary: VoiceLibrary
     let onManageVoices: () -> Void
 
+    @State private var isAdvancedEditorExpanded = false
+
     private var selectedVoice: VoiceProfile? {
         voiceLibrary.profiles.first(where: { $0.id == model.draftVoiceID })
     }
@@ -16,8 +18,8 @@ struct ProjectEditorView: View {
                 articleInput
 
                 if let project = model.selectedProject, !project.segments.isEmpty {
-                    segmentSection(project)
                     generationSection(project)
+                    advancedEditor(project)
                 }
 
                 statusBar
@@ -43,7 +45,7 @@ struct ProjectEditorView: View {
                 Text("把知识讲清楚，\n也讲得像人。")
                     .font(.system(size: 31, weight: .semibold, design: .serif))
                     .lineSpacing(2)
-                Text("应用会识别标题、定义、举例、疑问和结论，再逐段安排表达与停顿。")
+                Text("选择音色、粘贴文章，剩下的交给应用。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -64,7 +66,7 @@ struct ProjectEditorView: View {
     private var articleInput: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
-                Text("文章与音色")
+                Text("要朗读的内容")
                     .font(.headline)
                 Spacer()
                 Text(model.characterCountLabel)
@@ -75,10 +77,6 @@ struct ProjectEditorView: View {
                             : Color.secondary
                     )
             }
-
-            TextField("项目名称（可不填）", text: $model.draftName)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityLabel("朗读项目名称")
 
             TextEditor(
                 text: Binding(
@@ -100,7 +98,7 @@ struct ProjectEditorView: View {
                             lineWidth: 1
                         )
                 }
-                .frame(minHeight: 190)
+                .frame(minHeight: 210)
                 .accessibilityLabel("要制作成朗读音频的文章")
                 .accessibilityHint("第一版最多支持 3000 个字")
 
@@ -119,67 +117,46 @@ struct ProjectEditorView: View {
                 .frame(maxWidth: 300)
                 .accessibilityLabel("朗读音色")
 
-                Button("管理音色") { onManageVoices() }
+                Button("录入新音色") { onManageVoices() }
                 Spacer()
-                Button(model.selectedProject == nil ? "分析朗读方式" : "重新分析并保存") {
-                    model.analyzeAndSave()
+
+                if model.isGenerating || model.isFinishing {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Button(primaryActionLabel) {
+                    guard let selectedVoice else { return }
+                    model.startGeneration(using: selectedVoice)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(!model.canAnalyze)
-                .help(model.canAnalyze ? "识别文章结构并安排朗读" : "请先输入 3000 字以内的文章并选择音色")
+                .disabled(
+                    !model.canStartGeneration
+                        || selectedVoice == nil
+                        || !model.finalAudioURLs.isEmpty
+                )
+                .help("自动分析、保存并生成完整音频")
             }
         }
         .padding(18)
         .background(Color(red: 0.925, green: 0.949, blue: 0.978), in: RoundedRectangle(cornerRadius: 16))
     }
 
-    private func segmentSection(_ project: NarrationProject) -> some View {
-        VStack(alignment: .leading, spacing: 13) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("朗读分镜")
-                    .font(.title3.weight(.semibold))
-                Text("\(project.segments.count) 段")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("蓝色节拍线表示每段的表达力度")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Stepper(
-                    value: Binding(
-                        get: { model.commonSpeedFactor },
-                        set: { model.applySpeedToAll($0) }
-                    ),
-                    in: NarrationSegment.minimumSpeedFactor...NarrationSegment.maximumSpeedFactor,
-                    step: 0.1
-                ) {
-                    Text(String(format: "全文 %.1f×", model.commonSpeedFactor))
-                        .font(.caption.monospacedDigit().weight(.semibold))
-                }
-                .accessibilityLabel("全文成品语速")
-                .accessibilityValue(String(format: "%.1f 倍", model.commonSpeedFactor))
-            }
-
-            ForEach(project.segments) { segment in
-                SegmentEditorRow(
-                    segment: segment,
-                    onExpression: { model.updateSegment(id: segment.id, expression: $0) },
-                    onSpeed: { model.updateSegment(id: segment.id, speedFactor: $0) },
-                    onPause: { model.updateSegment(id: segment.id, pause: $0) },
-                    onPlay: { model.playSegment(segment) }
-                )
-            }
-        }
+    private var primaryActionLabel: String {
+        if model.isGenerating { return "正在生成…" }
+        if model.isFinishing { return "正在制作成品…" }
+        if !model.finalAudioURLs.isEmpty { return "音频已生成" }
+        if model.completedSegmentCount > 0 { return "继续生成" }
+        return "生成音频"
     }
 
     private func generationSection(_ project: NarrationProject) -> some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("生成与成品")
+                    Text("生成结果")
                         .font(.title3.weight(.semibold))
-                    Text("已完成 \(model.completedSegmentCount) / \(project.segments.count) 段")
+                    Text("已完成 \(model.completedSegmentCount) / \(project.segments.count) 个声音片段")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                     if model.estimatedFinalDuration > 0 {
@@ -190,19 +167,10 @@ struct ProjectEditorView: View {
                 }
                 Spacer()
                 if model.isFinishing {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel("正在制作朗读成品")
+                    Label("正在自动制作 WAV、M4A 和 MP3", systemImage: "waveform")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Button(model.allSegmentsCompleted ? "重新检查全文" : "生成全文") {
-                    guard let selectedVoice else { return }
-                    model.generateAll(using: selectedVoice)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!model.canGenerate || selectedVoice == nil)
-
-                Button("制作三种成品") { model.makeFinalAudio() }
-                    .disabled(!model.allSegmentsCompleted || model.isFinishing)
             }
 
             if model.isGenerating, let progress = model.queueProgress {
@@ -224,6 +192,73 @@ struct ProjectEditorView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.black.opacity(0.07), lineWidth: 1)
+        }
+    }
+
+    private func advancedEditor(_ project: NarrationProject) -> some View {
+        DisclosureGroup(isExpanded: $isAdvancedEditorExpanded) {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack {
+                    TextField("项目名称（可不填）", text: $model.draftName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 340)
+                        .accessibilityLabel("朗读项目名称")
+                        .onSubmit { model.saveProjectName() }
+                    Button("保存名称") { model.saveProjectName() }
+                        .disabled(model.isGenerating || model.isFinishing)
+                    Spacer()
+                    Stepper(
+                        value: Binding(
+                            get: { model.commonSpeedFactor },
+                            set: { model.applySpeedToAll($0) }
+                        ),
+                        in: NarrationSegment.minimumSpeedFactor...NarrationSegment.maximumSpeedFactor,
+                        step: 0.1
+                    ) {
+                        Text(String(format: "全文成品 %.1f×", model.commonSpeedFactor))
+                            .font(.caption.monospacedDigit().weight(.semibold))
+                    }
+                    .disabled(model.isGenerating || model.isFinishing)
+                }
+
+                Text("只在声音不满意时修改。每段可以修正朗读文字、调整成品节奏、切换版本或单独重做。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                ForEach(project.segments) { segment in
+                    SegmentEditorRow(
+                        segment: segment,
+                        isBusy: model.isGenerating || model.isFinishing,
+                        onTextSave: { model.updateSegmentText(id: segment.id, text: $0) },
+                        onSpeed: { model.updateSegment(id: segment.id, speedFactor: $0) },
+                        onPause: { model.updateSegment(id: segment.id, pause: $0) },
+                        onCandidate: { model.selectCandidate(segmentID: segment.id, candidateID: $0) },
+                        onRegenerate: {
+                            guard let selectedVoice else { return }
+                            model.regenerateSegment(id: segment.id, using: selectedVoice)
+                        },
+                        onPlay: { model.playSegment(segment) }
+                    )
+                }
+            }
+            .padding(.top, 14)
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("高级编辑")
+                        .font(.headline)
+                    Text("\(project.segments.count) 个片段 · 正常情况下无需打开")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+        }
+        .padding(18)
+        .background(Color.white.opacity(0.64), in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
         }
     }
 

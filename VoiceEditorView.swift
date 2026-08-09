@@ -17,6 +17,7 @@ struct VoiceEditorView: View {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && capture.sourceAudioURL != nil
+            && capture.qualitySummary?.level != .poor
             && authorizationConfirmed
             && !capture.isRecording
             && !isSaving
@@ -29,7 +30,7 @@ struct VoiceEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     nameSection
-                    referenceTextSection
+                    readingPromptSection
                     audioSection
                     authorizationSection
                     errorSection
@@ -69,27 +70,40 @@ struct VoiceEditorView: View {
         }
     }
 
-    private var referenceTextSection: some View {
+    private var readingPromptSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("参考原文")
-                    .font(.headline)
-                Spacer()
-                Button("恢复推荐朗读稿") {
-                    referenceText = Self.readingPrompt
-                }
-                .buttonStyle(.link)
-            }
-            Text("录音内容必须与这里的文字一致。可以直接朗读下面的推荐文稿。")
+            Text("照着朗读")
+                .font(.headline)
+            Text("请在安静环境中自然朗读下面这段文字。")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            TextEditor(text: $referenceText)
+            Text(referenceText)
                 .font(.body)
-                .scrollContentBackground(.hidden)
-                .padding(8)
+                .lineSpacing(5)
+                .textSelection(.enabled)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
-                .frame(minHeight: 110)
-                .accessibilityLabel("参考音频对应的原文")
+
+            DisclosureGroup("需要使用自己的朗读稿时展开") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("录音内容必须与修改后的文字完全一致。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    TextEditor(text: $referenceText)
+                        .font(.body)
+                        .scrollContentBackground(.hidden)
+                        .padding(8)
+                        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+                        .frame(minHeight: 90)
+                        .accessibilityLabel("参考音频对应的原文")
+                    Button("恢复推荐朗读稿") {
+                        referenceText = Self.readingPrompt
+                    }
+                    .buttonStyle(.link)
+                }
+                .padding(.top, 6)
+            }
         }
     }
 
@@ -163,7 +177,7 @@ struct VoiceEditorView: View {
 
     private var footer: some View {
         HStack {
-            Text("建议 10～30 秒、单人、安静环境；保存时会在本地自动降噪")
+            Text("建议 10～30 秒；应用会保留原录音，并自动选择更自然的参考版本")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()

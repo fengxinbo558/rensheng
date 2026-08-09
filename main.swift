@@ -26,11 +26,7 @@ enum SynthesisQuality: String, CaseIterable, Identifiable {
 @MainActor
 final class ProbeViewModel: ObservableObject {
     @Published var text = "你好，这是一段完全在本地生成的普通话语音。"
-    @Published var engineChoice: SynthesisEngineChoice = .compatibility {
-        didSet {
-            UserDefaults.standard.set(engineChoice.rawValue, forKey: Self.engineChoiceKey)
-        }
-    }
+    @Published var engineChoice: SynthesisEngineChoice = .compatibility
     @Published var quality: SynthesisQuality = .standard {
         didSet {
             UserDefaults.standard.set(quality.rawValue, forKey: Self.qualityKey)
@@ -45,7 +41,6 @@ final class ProbeViewModel: ObservableObject {
     private var activeEngine: SpeechEngine?
     private var activeGenerationID: UUID?
     private static let qualityKey = "SynthesisQuality"
-    private static let engineChoiceKey = "SynthesisEngineChoice"
 
     init(playback: PlaybackController) {
         self.playback = playback
@@ -53,12 +48,9 @@ final class ProbeViewModel: ObservableObject {
            let restored = SynthesisQuality(rawValue: stored) {
             quality = restored
         }
-        let storedChoice = UserDefaults.standard.string(forKey: Self.engineChoiceKey)
-            .flatMap(SynthesisEngineChoice.init(rawValue:))
-        let preferredChoice = storedChoice ?? .natural
-        engineChoice = preferredChoice == .natural && !RuntimeLocator.qwen.isAvailable
-            ? .compatibility
-            : preferredChoice
+        engineChoice = DeviceSynthesisPolicy.recommendedEngine(
+            naturalResourcesAvailable: RuntimeLocator.qwen.isAvailable
+        )
         status = engineChoice == .natural
             ? "自然人声引擎已就绪"
             : "兼容模式已就绪"
@@ -74,10 +66,13 @@ final class ProbeViewModel: ObservableObject {
     }
 
     var naturalEngineAvailable: Bool {
-        RuntimeLocator.qwen.isAvailable
+        RuntimeLocator.qwen.isAvailable && DeviceSynthesisPolicy.supportsNaturalVoice()
     }
 
     var naturalEngineUnavailableMessage: String? {
+        if RuntimeLocator.qwen.isAvailable && !DeviceSynthesisPolicy.supportsNaturalVoice() {
+            return "为保证长文生成稳定，当前电脑将使用兼容模式"
+        }
         let missing = RuntimeLocator.qwen.missingComponents
         return missing.isEmpty ? nil : "自然人声暂不可用：\(missing.joined(separator: "、"))"
     }
@@ -190,7 +185,7 @@ final class ProbeViewModel: ObservableObject {
     func playReference(_ voice: VoiceProfile) {
         do {
             try playback.play(
-                url: voice.referenceAudioURL,
+                url: voice.synthesisReferenceAudioURL,
                 title: "\(voice.name) · 参考音色",
                 contextID: playbackContextID
             )
@@ -328,7 +323,7 @@ struct ContentView: View {
                         .font(.system(size: 32))
                         .foregroundStyle(.blue)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("本地普通话音频概览")
+                        Text("快速生成")
                             .font(.title2.bold())
                         Text(model.naturalEngineAvailable ? "本地自然人声 · 完全离线" : "本地语音 · 完全离线")
                             .foregroundStyle(.secondary)
@@ -345,14 +340,8 @@ struct ContentView: View {
                             }
                             .frame(maxWidth: 320)
 
-                            Button(selectedVoice.isBuiltIn ? "试听音色" : "试听降噪音色") {
+                            Button("试听音色") {
                                 model.playReference(selectedVoice)
-                            }
-
-                            if selectedVoice.originalAudioURL != nil {
-                                Button("试听原录音") {
-                                    model.playOriginalReference(selectedVoice)
-                                }
                             }
 
                             Button("录入新音色") {
@@ -361,9 +350,17 @@ struct ContentView: View {
                             .buttonStyle(.borderedProminent)
 
                             if !selectedVoice.isBuiltIn {
-                                Button("删除", role: .destructive) {
-                                    voiceToDelete = selectedVoice
-                                    showingDeleteConfirmation = true
+                                Menu("音色设置") {
+                                    if selectedVoice.originalAudioURL != nil {
+                                        Button("试听原录音") {
+                                            model.playOriginalReference(selectedVoice)
+                                        }
+                                    }
+                                    Divider()
+                                    Button("删除这个音色", role: .destructive) {
+                                        voiceToDelete = selectedVoice
+                                        showingDeleteConfirmation = true
+                                    }
                                 }
                             }
                             Spacer()
@@ -378,17 +375,6 @@ struct ContentView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                        if let quality = selectedVoice.qualitySummary {
-                            Label(
-                                quality.shortLabel,
-                                systemImage: quality.level == .good
-                                    ? "checkmark.circle.fill"
-                                    : "exclamationmark.triangle.fill"
-                            )
-                            .font(.caption)
-                            .foregroundStyle(quality.level == .good ? Color.green : Color.orange)
-                        }
-
                         if let errorMessage = voiceLibrary.errorMessage {
                             Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                                 .font(.caption)
@@ -398,42 +384,6 @@ struct ContentView: View {
                     .padding(4)
                 } label: {
                     Text("声音")
-                        .font(.headline)
-                }
-
-                GroupBox {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Picker("声音模式", selection: $model.engineChoice) {
-                            Text(SynthesisEngineChoice.natural.label)
-                                .tag(SynthesisEngineChoice.natural)
-                                .disabled(!model.naturalEngineAvailable)
-                            Text(SynthesisEngineChoice.compatibility.label)
-                                .tag(SynthesisEngineChoice.compatibility)
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(maxWidth: 420)
-                        .disabled(model.isGenerating)
-                        .accessibilityLabel("声音生成模式")
-
-                        if model.engineChoice == .natural {
-                            Text("更接近真人的语气和音色；第一次生成需要先载入本地模型。")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else {
-                            Text("占用更低、生成更快，适合资源较少的电脑。")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        if let message = model.naturalEngineUnavailableMessage {
-                            Label(message, systemImage: "exclamationmark.triangle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                    }
-                    .padding(4)
-                } label: {
-                    Text("生成方式")
                         .font(.headline)
                 }
 
@@ -452,20 +402,12 @@ struct ContentView: View {
                         Text(model.characterCountLabel)
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(model.text.count > 500 ? .red : .secondary)
-                        if model.engineChoice == .compatibility {
-                            Picker("生成质量", selection: $model.quality) {
-                                ForEach(SynthesisQuality.allCases) { quality in
-                                    Text(quality.label).tag(quality)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            .frame(width: 220)
-                            .disabled(model.isGenerating)
-                        } else {
-                            Label("自然人声 · 自动高质量", systemImage: "waveform.badge.plus")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                        Label(
+                            model.engineChoice == .natural ? "自然人声 · 自动高质量" : "兼容模式",
+                            systemImage: "waveform.badge.plus"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                         Spacer()
                         if model.isGenerating {
                             ProgressView()
@@ -473,13 +415,58 @@ struct ContentView: View {
                                 .accessibilityLabel("正在生成本地语音")
                             Button("取消", role: .cancel) { model.cancel() }
                         } else {
-                            Button("使用“\(selectedVoice.name)”生成\(model.engineChoice == .natural ? "自然语音" : "")") {
+                            Button("生成音频") {
                                 model.generate(using: selectedVoice)
                             }
                             .buttonStyle(.borderedProminent)
                             .disabled(!model.canGenerate)
                         }
                     }
+
+                    DisclosureGroup("高级设置") {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Picker("声音模式", selection: $model.engineChoice) {
+                                Text(SynthesisEngineChoice.natural.label)
+                                    .tag(SynthesisEngineChoice.natural)
+                                    .disabled(!model.naturalEngineAvailable)
+                                Text(SynthesisEngineChoice.compatibility.label)
+                                    .tag(SynthesisEngineChoice.compatibility)
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(maxWidth: 420)
+                            .disabled(model.isGenerating)
+
+                            if model.engineChoice == .compatibility {
+                                Picker("兼容模式质量", selection: $model.quality) {
+                                    ForEach(SynthesisQuality.allCases) { quality in
+                                        Text(quality.label).tag(quality)
+                                    }
+                                }
+                                .pickerStyle(.segmented)
+                                .frame(width: 260)
+                                .disabled(model.isGenerating)
+                            }
+
+                            if let quality = selectedVoice.qualitySummary {
+                                Label(
+                                    "\(quality.shortLabel) · \(selectedVoice.synthesisReferenceLabel)",
+                                    systemImage: quality.level == .good
+                                        ? "checkmark.circle.fill"
+                                        : "exclamationmark.triangle.fill"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(quality.level == .good ? Color.green : Color.orange)
+                            }
+
+                            if let message = model.naturalEngineUnavailableMessage {
+                                Label(message, systemImage: "exclamationmark.triangle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                        .padding(.top, 8)
+                    }
+                    .font(.subheadline)
                 }
 
                 Divider()

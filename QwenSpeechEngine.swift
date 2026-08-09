@@ -30,7 +30,7 @@ final class QwenSpeechEngine: SpeechEngine, @unchecked Sendable {
 
         let process = Process()
         process.executableURL = resources.python
-        let referenceAudio = request.voice.originalAudioURL ?? request.voice.referenceAudioURL
+        let referenceAudio = request.voice.synthesisReferenceAudioURL
         process.arguments = [
             resources.runner.path,
             "--model-dir", resources.model.path,
@@ -39,7 +39,7 @@ final class QwenSpeechEngine: SpeechEngine, @unchecked Sendable {
             "--text", request.text,
             "--output", request.outputURL.path,
             "--deepfilter-model", resources.deepFilterModel.path,
-            "--deepfilter-wet", "0.5",
+            "--deepfilter-wet", "0.0",
             "--streaming-interval", "2",
             "--seed", String(request.seed),
         ]

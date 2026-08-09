@@ -65,6 +65,71 @@ struct VoiceLibrarySelfTest {
             "输出目录未创建"
         )
 
+        let originalURL = URL(fileURLWithPath: originalAudioPath)
+        let cleanRecording = VoiceProfile(
+            id: "clean-reference",
+            name: "干净录音",
+            referenceAudioPath: created.referenceAudioPath,
+            originalAudioPath: originalAudioPath,
+            processedAudioPath: created.referenceAudioPath,
+            qualitySummary: AudioQualitySummary(
+                duration: 15,
+                peakDBFS: -3,
+                rmsDBFS: -20,
+                noiseFloorDBFS: -55,
+                clippingFraction: 0
+            ),
+            referenceText: "参考原文",
+            createdAt: Date(),
+            authorizationConfirmedAt: Date(),
+            isBuiltIn: false
+        )
+        try require(
+            cleanRecording.synthesisReferenceAudioURL == originalURL,
+            "干净录音应保留原声细节"
+        )
+
+        let noisyRecording = VoiceProfile(
+            id: "noisy-reference",
+            name: "有底噪录音",
+            referenceAudioPath: created.referenceAudioPath,
+            originalAudioPath: originalAudioPath,
+            processedAudioPath: created.referenceAudioPath,
+            qualitySummary: AudioQualitySummary(
+                duration: 15,
+                peakDBFS: -3,
+                rmsDBFS: -20,
+                noiseFloorDBFS: -35,
+                clippingFraction: 0
+            ),
+            referenceText: "参考原文",
+            createdAt: Date(),
+            authorizationConfirmedAt: Date(),
+            isBuiltIn: false
+        )
+        try require(
+            noisyRecording.synthesisReferenceAudioURL == created.referenceAudioURL,
+            "有明显底噪时应使用清理版参考音频"
+        )
+
+        let missingOriginalRecording = VoiceProfile(
+            id: cleanRecording.id,
+            name: cleanRecording.name,
+            referenceAudioPath: cleanRecording.referenceAudioPath,
+            originalAudioPath: URL(fileURLWithPath: support)
+                .appendingPathComponent("missing-original.wav").path,
+            processedAudioPath: cleanRecording.processedAudioPath,
+            qualitySummary: cleanRecording.qualitySummary,
+            referenceText: cleanRecording.referenceText,
+            createdAt: cleanRecording.createdAt,
+            authorizationConfirmedAt: cleanRecording.authorizationConfirmedAt,
+            isBuiltIn: cleanRecording.isBuiltIn
+        )
+        try require(
+            missingOriginalRecording.synthesisReferenceAudioURL == created.referenceAudioURL,
+            "原始录音丢失时应自动回退到现有清理版"
+        )
+
         print("VoiceLibrarySelfTest PASS")
         print("profile=\(created.id)")
         print("audio=\(created.referenceAudioPath)")

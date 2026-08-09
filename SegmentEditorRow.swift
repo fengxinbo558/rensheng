@@ -2,49 +2,70 @@ import SwiftUI
 
 struct SegmentEditorRow: View {
     let segment: NarrationSegment
-    let onExpression: (NarrationExpression) -> Void
+    let isBusy: Bool
+    let onTextSave: (String) -> Void
     let onSpeed: (Double) -> Void
     let onPause: (NarrationPause) -> Void
+    let onCandidate: (String) -> Void
+    let onRegenerate: () -> Void
     let onPlay: () -> Void
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            VStack(spacing: 7) {
-                Text(String(format: "%02d", segment.order + 1))
-                    .font(.caption.monospacedDigit().weight(.bold))
-                    .foregroundStyle(kindColor)
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(kindColor)
-                    .frame(width: 5, height: barHeight)
-            }
-            .accessibilityHidden(true)
+    @State private var isExpanded = false
+    @State private var editedText: String
 
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text(segment.kind.label)
+    init(
+        segment: NarrationSegment,
+        isBusy: Bool,
+        onTextSave: @escaping (String) -> Void,
+        onSpeed: @escaping (Double) -> Void,
+        onPause: @escaping (NarrationPause) -> Void,
+        onCandidate: @escaping (String) -> Void,
+        onRegenerate: @escaping () -> Void,
+        onPlay: @escaping () -> Void
+    ) {
+        self.segment = segment
+        self.isBusy = isBusy
+        self.onTextSave = onTextSave
+        self.onSpeed = onSpeed
+        self.onPause = onPause
+        self.onCandidate = onCandidate
+        self.onRegenerate = onRegenerate
+        self.onPlay = onPlay
+        _editedText = State(initialValue: segment.text)
+    }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 7) {
+                    Text("朗读文字")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(kindColor)
-                    Spacer()
-                    stateLabel
-                    Button("播放") { onPlay() }
-                        .buttonStyle(.borderless)
-                        .disabled(segment.generationState != .completed)
+                        .foregroundStyle(.secondary)
+                    TextEditor(text: $editedText)
+                        .font(.system(size: 14.5))
+                        .lineSpacing(4)
+                        .scrollContentBackground(.hidden)
+                        .padding(8)
+                        .frame(minHeight: 72)
+                        .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
+                    HStack {
+                        Text("用于修正人名、多音字或专业词读法")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("保存文字") { onTextSave(editedText) }
+                            .disabled(
+                                isBusy
+                                    || editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    || editedText == segment.text
+                            )
+                    }
                 }
 
-                Text(segment.text)
-                    .font(.system(size: 15.5))
-                    .lineSpacing(5)
-                    .textSelection(.enabled)
-
                 HStack(spacing: 14) {
-                    Picker(
-                        "表达方式",
-                        selection: Binding(get: { segment.expression }, set: onExpression)
-                    ) {
-                        ForEach(NarrationExpression.allCases) { item in
-                            Text(item.label).tag(item)
-                        }
-                    }
+                    Label("自动表达：\(segment.expression.label)", systemImage: "wand.and.stars")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Stepper(
                         value: Binding(get: { segment.speedFactor }, set: onSpeed),
                         in: NarrationSegment.minimumSpeedFactor...NarrationSegment.maximumSpeedFactor,
@@ -53,8 +74,7 @@ struct SegmentEditorRow: View {
                         Text(String(format: "成品 %.1f×", segment.speedFactor))
                             .font(.caption.monospacedDigit())
                     }
-                    .accessibilityLabel("第 \(segment.order + 1) 段成品语速")
-                    .accessibilityValue(String(format: "%.1f 倍", segment.speedFactor))
+                    .disabled(isBusy)
                     Picker(
                         "段后停顿",
                         selection: Binding(get: { segment.pause }, set: onPause)
@@ -63,9 +83,36 @@ struct SegmentEditorRow: View {
                             Text(item.label).tag(item)
                         }
                     }
+                    .disabled(isBusy)
                     Spacer()
                 }
                 .controlSize(.small)
+
+                HStack(spacing: 10) {
+                    if segment.candidates.count > 1 {
+                        Picker(
+                            "声音版本",
+                            selection: Binding(
+                                get: { segment.selectedCandidateID ?? "" },
+                                set: onCandidate
+                            )
+                        ) {
+                            ForEach(Array(segment.candidates.enumerated()), id: \.element.id) { index, item in
+                                Text("版本 \(index + 1)").tag(item.id)
+                            }
+                        }
+                        .frame(maxWidth: 180)
+                        .disabled(isBusy)
+                    } else if segment.candidates.count == 1 {
+                        Text("已有 1 个声音版本")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button("重新生成这一段") { onRegenerate() }
+                        .disabled(isBusy)
+                    Spacer()
+                }
 
                 if segment.usesExtremeSpeed {
                     Label("极端成品语速可能出现明显拉伸感", systemImage: "exclamationmark.triangle")
@@ -73,25 +120,40 @@ struct SegmentEditorRow: View {
                         .foregroundStyle(.orange)
                 }
             }
+            .padding(.top, 12)
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Text(String(format: "%02d", segment.order + 1))
+                    .font(.caption.monospacedDigit().weight(.bold))
+                    .foregroundStyle(kindColor)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 8) {
+                        Text(segment.kind.label)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(kindColor)
+                        stateLabel
+                    }
+                    Text(segment.text)
+                        .font(.system(size: 14.5))
+                        .lineLimit(isExpanded ? 3 : 1)
+                        .foregroundStyle(.primary)
+                }
+                Spacer()
+                Button("播放") { onPlay() }
+                    .buttonStyle(.borderless)
+                    .disabled(segment.generationState != .completed || isBusy)
+            }
         }
-        .padding(16)
-        .background(Color.white.opacity(0.88), in: RoundedRectangle(cornerRadius: 14))
+        .padding(14)
+        .background(Color.white.opacity(0.88), in: RoundedRectangle(cornerRadius: 12))
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
+            RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.black.opacity(0.07), lineWidth: 1)
         }
+        .onChange(of: segment.text) { _, newText in editedText = newText }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("第 \(segment.order + 1) 段，\(segment.kind.label)")
-    }
-
-    private var barHeight: CGFloat {
-        switch segment.kind {
-        case .title, .conclusion: return 42
-        case .definition, .example: return 31
-        case .question: return 24
-        case .transition: return 18
-        case .explanation: return 27
-        }
     }
 
     private var kindColor: Color {

@@ -124,6 +124,42 @@ struct GenerationQueueSelfTest {
         try queueExpect(engine.calls.last == "第二段。", "只应重新生成修改过的段落")
         try queueExpect(engine.calls.count == callsBeforeCache + 1, "未修改段落不应重做")
 
+        var targetedProject = try store.loadProject(id: project.id)
+        let targetedID = targetedProject.segments[0].id
+        let oldCandidateCount = targetedProject.segments[0].candidates.count
+        let untouchedCandidateIDs = targetedProject.segments[1].candidates.map(\.id)
+        targetedProject.segments[0].generationState = .pending
+        targetedProject.segments[0].selectedCandidateID = nil
+        try store.save(targetedProject)
+        let callsBeforeTargetedRun = engine.calls.count
+        let targetedRun = try queue.run(
+            projectID: project.id,
+            voice: voice,
+            onlySegmentID: targetedID
+        )
+        try queueExpect(targetedRun.completed == 1, "单段重做应完成一个目标段")
+        try queueExpect(engine.calls.count == callsBeforeTargetedRun + 1, "单段重做不应生成其他段落")
+        let afterTargetedRun = try store.loadProject(id: project.id)
+        try queueExpect(
+            afterTargetedRun.segments[0].candidates.count == oldCandidateCount + 1,
+            "单段重做应保留旧候选并增加新版本"
+        )
+        try queueExpect(
+            afterTargetedRun.segments[1].candidates.map(\.id) == untouchedCandidateIDs,
+            "单段重做不应改动其他段落的候选版本"
+        )
+
+        do {
+            _ = try queue.run(
+                projectID: project.id,
+                voice: voice,
+                onlySegmentID: "missing-segment"
+            )
+            throw GenerationQueueTestFailure.assertion("不存在的单段标识应返回错误")
+        } catch GenerationQueueError.segmentNotFound {
+            // 预期结果。
+        }
+
         var recoveryProject = try store.createProject(
             name: "失败恢复",
             sourceText: "甲。乙。丙。",

@@ -19,6 +19,22 @@ struct VoiceProfile: Identifiable, Codable, Hashable {
     var originalAudioURL: URL? {
         originalAudioPath.map { URL(fileURLWithPath: $0) }
     }
+
+    var synthesisReferenceAudioURL: URL {
+        if qualitySummary?.level == .good,
+           let originalAudioURL,
+           FileManager.default.fileExists(atPath: originalAudioURL.path) {
+            return originalAudioURL
+        }
+        return referenceAudioURL
+    }
+
+    var synthesisReferenceLabel: String {
+        if let originalAudioURL, synthesisReferenceAudioURL == originalAudioURL {
+            return "保留原声细节"
+        }
+        return "已清理环境底噪"
+    }
 }
 
 @MainActor

@@ -44,6 +44,15 @@ final class NarrationWorkspaceModel: ObservableObject {
             && !draftVoiceID.isEmpty
     }
 
+    var canStartGeneration: Bool {
+        let count = draftText.trimmingCharacters(in: .whitespacesAndNewlines).count
+        return !isGenerating
+            && !isFinishing
+            && count > 0
+            && draftText.count <= NarrationProject.maximumCharacterCount
+            && !draftVoiceID.isEmpty
+    }
+
     var canGenerate: Bool {
         guard let selectedProject else { return false }
         return !isGenerating && !isFinishing && !selectedProject.segments.isEmpty
@@ -89,6 +98,21 @@ final class NarrationWorkspaceModel: ObservableObject {
         refreshDraftAudioAvailability()
     }
 
+    func saveProjectName() {
+        guard var project = selectedProject else { return }
+        project.name = resolvedName()
+        project.updatedAt = Date()
+        do {
+            try store.save(project)
+            selectedProject = project
+            draftName = project.name
+            reloadProjects(selecting: project.id)
+            status = "项目名称已保存"
+        } catch {
+            status = "项目名称保存失败：\(error.localizedDescription)"
+        }
+    }
+
     func startNewProject(defaultVoiceID: String) {
         playback.stopAndUnload()
         selectedProject = nil
@@ -117,8 +141,9 @@ final class NarrationWorkspaceModel: ObservableObject {
         }
     }
 
-    func analyzeAndSave() {
-        guard canAnalyze else { return }
+    @discardableResult
+    func analyzeAndSave() -> Bool {
+        guard canAnalyze else { return false }
         do {
             let analyzed = try director.analyze(text: draftText, voiceID: draftVoiceID)
             var project: NarrationProject
@@ -146,9 +171,30 @@ final class NarrationWorkspaceModel: ObservableObject {
             finalAudioURLs = [:]
             reloadProjects(selecting: project.id)
             status = "已分析为 \(project.segments.count) 个朗读段落，可直接生成全文"
+            return true
         } catch {
             status = "分析失败：\(error.localizedDescription)"
+            return false
         }
+    }
+
+    func startGeneration(using voice: VoiceProfile) {
+        guard canStartGeneration else { return }
+        let draftChanged = selectedProject == nil
+            || selectedProject?.sourceText != draftText
+            || selectedProject?.voiceID != draftVoiceID
+            || selectedProject?.segments.isEmpty == true
+        if draftChanged, !analyzeAndSave() { return }
+
+        if allSegmentsCompleted {
+            if finalAudioURLs.isEmpty {
+                makeFinalAudio()
+            } else {
+                status = "音频已经准备好，可以直接播放或在访达中查看"
+            }
+            return
+        }
+        runGeneration(using: voice, onlySegmentID: nil, automaticallyFinish: true)
     }
 
     func updateSegment(
@@ -186,6 +232,88 @@ final class NarrationWorkspaceModel: ObservableObject {
         }
     }
 
+    func updateSegmentText(id: String, text: String) {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else {
+            status = "朗读文字不能为空"
+            return
+        }
+        guard clean.count <= 120 else {
+            status = "单个声音片段最多 120 个字；请拆成两段后再修改"
+            return
+        }
+        guard var project = selectedProject,
+              let index = project.segments.firstIndex(where: { $0.id == id }) else { return }
+        guard project.segments[index].text != clean else { return }
+        project.segments[index].text = clean
+        project.segments[index].refreshFingerprint(
+            voiceID: project.voiceID,
+            invalidateChanged: true
+        )
+        project.exports = []
+        project.updatedAt = Date()
+        do {
+            try store.save(project)
+            selectedProject = project
+            finalAudioURLs = [:]
+            if playback.contextID == project.id { playback.stopAndUnload() }
+            reloadProjects(selecting: project.id)
+            status = "第 \(project.segments[index].order + 1) 段文字已更新，只需重做这一段"
+        } catch {
+            status = "朗读文字保存失败：\(error.localizedDescription)"
+        }
+    }
+
+    func selectCandidate(segmentID: String, candidateID: String) {
+        guard !isGenerating, !isFinishing,
+              var project = selectedProject,
+              let index = project.segments.firstIndex(where: { $0.id == segmentID }),
+              let candidate = project.segments[index].candidates.first(where: {
+                  $0.id == candidateID && $0.inputFingerprint == project.segments[index].inputFingerprint
+              }),
+              let candidateURL = try? store.resolveProjectFileURL(
+                  projectID: project.id,
+                  relativePath: candidate.relativePath
+              ),
+              FileManager.default.fileExists(atPath: candidateURL.path) else { return }
+        project.segments[index].selectedCandidateID = candidateID
+        project.segments[index].generationState = .completed
+        project.exports = []
+        project.updatedAt = Date()
+        do {
+            try store.save(project)
+            selectedProject = project
+            finalAudioURLs = [:]
+            if playback.contextID == project.id { playback.stopAndUnload() }
+            reloadProjects(selecting: project.id)
+            status = "已切换第 \(project.segments[index].order + 1) 段版本，正在更新成品"
+            if allSegmentsCompleted { makeFinalAudio() }
+        } catch {
+            status = "候选版本保存失败：\(error.localizedDescription)"
+        }
+    }
+
+    func regenerateSegment(id: String, using voice: VoiceProfile) {
+        guard !isGenerating, !isFinishing,
+              var project = selectedProject,
+              let index = project.segments.firstIndex(where: { $0.id == id }) else { return }
+        project.segments[index].generationState = .pending
+        project.segments[index].selectedCandidateID = nil
+        project.segments[index].errorSummary = nil
+        project.exports = []
+        project.updatedAt = Date()
+        do {
+            try store.save(project)
+            selectedProject = project
+            finalAudioURLs = [:]
+            if playback.contextID == project.id { playback.stopAndUnload() }
+            reloadProjects(selecting: project.id)
+            runGeneration(using: voice, onlySegmentID: id, automaticallyFinish: true)
+        } catch {
+            status = "无法重新生成这一段：\(error.localizedDescription)"
+        }
+    }
+
     func applySpeedToAll(_ requestedSpeed: Double) {
         guard var project = selectedProject else { return }
         let speed = NarrationSegment.normalizedSpeedFactor(requestedSpeed)
@@ -207,25 +335,42 @@ final class NarrationWorkspaceModel: ObservableObject {
     }
 
     func generateAll(using voice: VoiceProfile) {
+        runGeneration(using: voice, onlySegmentID: nil, automaticallyFinish: false)
+    }
+
+    private func runGeneration(
+        using voice: VoiceProfile,
+        onlySegmentID: String?,
+        automaticallyFinish: Bool
+    ) {
         guard canGenerate, let projectID = selectedProject?.id else { return }
-        let engine: SpeechEngine = RuntimeLocator.qwen.isAvailable
+        let engineChoice = DeviceSynthesisPolicy.recommendedEngine(
+            naturalResourcesAvailable: RuntimeLocator.qwen.isAvailable
+        )
+        let engine: SpeechEngine = engineChoice == .natural
             ? QwenSpeechEngine()
             : ZipVoiceSpeechEngine()
         let queue = GenerationQueue(store: store, engine: engine)
         activeQueue = queue
         isGenerating = true
         queueProgress = GenerationQueueProgress(
-            completed: completedSegmentCount,
-            total: selectedProject?.segments.count ?? 0,
-            currentSegment: max(1, completedSegmentCount + 1),
+            completed: onlySegmentID == nil ? completedSegmentCount : 0,
+            total: onlySegmentID == nil ? (selectedProject?.segments.count ?? 0) : 1,
+            currentSegment: onlySegmentID == nil ? max(1, completedSegmentCount + 1) : 1,
             status: "正在准备本地自然人声"
         )
-        status = "开始逐段生成；已经完成的段落会自动保留"
+        status = onlySegmentID == nil
+            ? "开始逐段生成；已经完成的段落会自动保留"
+            : "正在重新生成这一段；原来的版本仍会保留"
         let owner = self
 
         DispatchQueue.global(qos: .userInitiated).async {
             do {
-                let summary = try queue.run(projectID: projectID, voice: voice) { progress in
+                let summary = try queue.run(
+                    projectID: projectID,
+                    voice: voice,
+                    onlySegmentID: onlySegmentID
+                ) { progress in
                     Task { @MainActor [weak owner] in
                         guard owner?.activeQueue === queue else { return }
                         owner?.queueProgress = progress
@@ -234,16 +379,19 @@ final class NarrationWorkspaceModel: ObservableObject {
                     }
                 }
                 Task { @MainActor [weak owner] in
-                    guard owner?.activeQueue === queue else { return }
-                    owner?.activeQueue = nil
-                    owner?.isGenerating = false
-                    owner?.reloadSelectedProject()
+                    guard let owner, owner.activeQueue === queue else { return }
+                    owner.activeQueue = nil
+                    owner.isGenerating = false
+                    owner.reloadSelectedProject()
                     if summary.cancelled {
-                        owner?.status = "已暂停，完成的段落都已保存"
+                        owner.status = "已暂停，完成的段落都已保存"
                     } else if summary.failed > 0 {
-                        owner?.status = "有一段生成失败；再次点击生成会从这里继续"
+                        owner.status = "有一段生成失败；再次点击生成会从这里继续"
+                    } else if automaticallyFinish && owner.allSegmentsCompleted {
+                        owner.status = "语音生成完成，正在自动制作三种成品"
+                        owner.makeFinalAudio()
                     } else {
-                        owner?.status = "全文生成完成，可以制作 WAV、M4A 和 MP3 成品"
+                        owner.status = "语音生成完成"
                     }
                 }
             } catch {
@@ -264,7 +412,7 @@ final class NarrationWorkspaceModel: ObservableObject {
     }
 
     func makeFinalAudio() {
-        guard allSegmentsCompleted, let project = selectedProject else { return }
+        guard !isFinishing, allSegmentsCompleted, let project = selectedProject else { return }
         isFinishing = true
         status = "正在统一音量、加入停顿并制作三种成品…"
         let projectID = project.id
@@ -444,7 +592,7 @@ final class NarrationWorkspaceModel: ObservableObject {
         } else {
             finalAudioURLs = [:]
             if playback.contextID == project.id { playback.stopAndUnload() }
-            status = "文章或音色已经修改，请重新分析并保存后再制作成品"
+            status = "文章或音色已经修改，点击“生成音频”即可自动更新"
         }
     }
 

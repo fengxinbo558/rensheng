@@ -31,6 +31,7 @@ final class GenerationQueue: @unchecked Sendable {
     func run(
         projectID: String,
         voice: VoiceProfile,
+        onlySegmentID: String? = nil,
         progress: ProgressHandler? = nil
     ) throws -> GenerationQueueSummary {
         try beginRun()
@@ -48,8 +49,16 @@ final class GenerationQueue: @unchecked Sendable {
             try store.save(project)
         }
         var summary = GenerationQueueSummary()
-        let orderedIndices = project.segments.indices.sorted {
+        let allOrderedIndices = project.segments.indices.sorted {
             project.segments[$0].order < project.segments[$1].order
+        }
+        let orderedIndices = if let onlySegmentID {
+            allOrderedIndices.filter { project.segments[$0].id == onlySegmentID }
+        } else {
+            allOrderedIndices
+        }
+        if onlySegmentID != nil, orderedIndices.isEmpty {
+            throw GenerationQueueError.segmentNotFound
         }
         let total = orderedIndices.count
 
@@ -72,7 +81,7 @@ final class GenerationQueue: @unchecked Sendable {
                         completed: summary.completed + summary.skipped,
                         total: total,
                         currentSegment: position + 1,
-                        status: "已复用第 \(position + 1) 段"
+                        status: "已复用第 \(project.segments[index].order + 1) 段"
                     )
                 )
                 continue
@@ -96,8 +105,8 @@ final class GenerationQueue: @unchecked Sendable {
                         total: total,
                         currentSegment: position + 1,
                         status: attempt == 1
-                            ? "正在生成第 \(position + 1) 段"
-                            : "正在重试第 \(position + 1) 段"
+                            ? "正在生成第 \(project.segments[index].order + 1) 段"
+                            : "正在重试第 \(project.segments[index].order + 1) 段"
                     )
                 )
                 let candidateID = UUID().uuidString
@@ -229,6 +238,7 @@ enum GenerationQueueError: LocalizedError {
     case alreadyRunning
     case engineUnavailable(String)
     case invalidAudio
+    case segmentNotFound
 
     var errorDescription: String? {
         switch self {
@@ -238,6 +248,8 @@ enum GenerationQueueError: LocalizedError {
             return "本地语音资源未就绪：\(reason)"
         case .invalidAudio:
             return "生成的音频没有通过完整性检查"
+        case .segmentNotFound:
+            return "没有找到要重新生成的段落"
         }
     }
 }
