@@ -19,4 +19,13 @@
 python3 -m unittest discover experiments/emotion-control/tests -v
 ```
 
-真实模型的安装与运行入口会在契约自检稳定后加入。
+项目内运行时与模型准备：
+
+```sh
+experiments/emotion-control/setup_local_runtime.sh
+experiments/emotion-control/download_local_models.sh
+```
+
+真实试听由 `run_benchmark.py` 顺序执行。可以先用
+`--utterances-per-emotion 1` 为五种表达各生成一条，再决定是否运行完整十五条。
+程序只在忽略目录中保存匿名音频、自动指标和答案文件，不会把参考录音、录音原文或绝对路径写入报告。
