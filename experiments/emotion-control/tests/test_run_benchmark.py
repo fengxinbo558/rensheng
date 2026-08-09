@@ -33,6 +33,11 @@ class BenchmarkRunnerTests(unittest.TestCase):
         self.assertNotIn("/private/voice.wav", summary)
         self.assertNotIn("私密原文", summary)
 
+    def test_failure_summary_keeps_the_leading_error(self) -> None:
+        summary = RUNNER._failure_summary("important error " + "x" * 800, ())
+        self.assertTrue(summary.startswith("important error"))
+        self.assertLessEqual(len(summary), 500)
+
 
 if __name__ == "__main__":
     unittest.main()

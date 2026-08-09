@@ -57,10 +57,12 @@ def _peak_memory(stderr: str) -> int | None:
 
 
 def _failure_summary(stderr: str, private_values: tuple[str, ...]) -> str:
-    summary = " ".join(stderr.strip().split())[-500:]
+    summary = " ".join(stderr.strip().split())
     for value in private_values:
         if value:
             summary = summary.replace(value, "[已隐藏]")
+    if len(summary) > 500:
+        summary = f"{summary[:300]} … {summary[-197:]}"
     return summary
 
 

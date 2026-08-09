@@ -26,6 +26,9 @@ experiments/emotion-control/setup_local_runtime.sh
 experiments/emotion-control/download_local_models.sh
 ```
 
+运行时会在项目忽略目录内准备与 MLX 版本匹配的预编译 Metal 资源，
+不要求安装 Xcode、Metal Toolchain、Homebrew 或任何系统组件。
+
 真实试听由 `run_benchmark.py` 顺序执行。可以先用
 `--utterances-per-emotion 1` 为五种表达各生成一条，再决定是否运行完整十五条。
 程序只在忽略目录中保存匿名音频、自动指标和答案文件，不会把参考录音、录音原文或绝对路径写入报告。
