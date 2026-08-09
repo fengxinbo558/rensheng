@@ -110,6 +110,33 @@ class QwenRunnerContractTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("streaming interval", result.stderr.lower())
 
+    def test_invalid_output_duration_limit_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            model = root / "model"
+            model.mkdir()
+            reference = root / "reference.wav"
+            reference.write_bytes(b"placeholder")
+
+            result = self.run_runner(
+                "--model-dir",
+                str(model),
+                "--reference-audio",
+                str(reference),
+                "--reference-text",
+                "参考原文",
+                "--text",
+                "目标文字",
+                "--output",
+                str(root / "result.wav"),
+                "--max-output-seconds",
+                "0",
+                "--validate-only",
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("maximum output duration", result.stderr.lower())
+
 
 if __name__ == "__main__":
     unittest.main()

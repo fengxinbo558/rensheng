@@ -20,6 +20,8 @@ from typing import Any, Sequence
 
 MAX_TARGET_CHARACTERS = 500
 DEFAULT_FINAL_SAMPLE_RATE = 48_000
+MIN_AUTOMATIC_OUTPUT_SECONDS = 15.0
+MAX_AUTOMATIC_OUTPUT_SECONDS = 180.0
 
 
 class RunnerError(RuntimeError):
@@ -53,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--repetition-penalty", type=float, default=1.5)
     parser.add_argument("--max-tokens", type=int, default=4096)
+    parser.add_argument("--max-output-seconds", type=float)
     parser.add_argument("--validate-only", action="store_true")
     return parser
 
@@ -111,6 +114,23 @@ def validate_arguments(arguments: argparse.Namespace) -> None:
         raise RunnerError("repetition penalty must be greater than zero")
     if arguments.max_tokens <= 0:
         raise RunnerError("max tokens must be greater than zero")
+    if (
+        arguments.max_output_seconds is not None
+        and not 1.0 <= arguments.max_output_seconds <= 600.0
+    ):
+        raise RunnerError("maximum output duration must be between 1 and 600 seconds")
+
+
+def output_duration_limit(arguments: argparse.Namespace) -> float:
+    if arguments.max_output_seconds is not None:
+        return float(arguments.max_output_seconds)
+    estimated = len(arguments.text.strip()) * 0.75 + 6.0
+    return float(
+        min(
+            MAX_AUTOMATIC_OUTPUT_SECONDS,
+            max(MIN_AUTOMATIC_OUTPUT_SECONDS, estimated),
+        )
+    )
 
 
 def rms(samples: Any) -> float:
@@ -198,6 +218,9 @@ def generate_audio(arguments: argparse.Namespace) -> tuple[Any, int, dict[str, A
     generation_started = time.monotonic()
     first_audio_seconds: float | None = None
     chunks = []
+    total_samples = 0
+    safety_limit_seconds = output_duration_limit(arguments)
+    maximum_samples = int(math.ceil(safety_limit_seconds * sample_rate))
 
     with contextlib.redirect_stdout(sys.stderr):
         results = iter(model.generate(
@@ -228,8 +251,11 @@ def generate_audio(arguments: argparse.Namespace) -> tuple[Any, int, dict[str, A
         if first_audio_seconds is None:
             first_audio_seconds = elapsed
             emit("first_audio", seconds=elapsed)
+        total_samples += int(audio.size)
+        if total_samples > maximum_samples:
+            raise RunnerError("生成结果异常过长，已自动停止；请重试或缩短文字")
         chunks.append(audio)
-        emit("progress", chunks=len(chunks), samples=sum(item.size for item in chunks))
+        emit("progress", chunks=len(chunks), samples=total_samples)
 
     generation_seconds = time.monotonic() - generation_started
     if not chunks:
@@ -245,6 +271,7 @@ def generate_audio(arguments: argparse.Namespace) -> tuple[Any, int, dict[str, A
         "chunkCount": len(chunks),
         "qwenPeakMemoryGB": peak_memory_gb,
         "rawDuration": float(audio.size / sample_rate),
+        "safetyLimitSeconds": safety_limit_seconds,
     }
 
     del results
