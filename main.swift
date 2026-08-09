@@ -26,6 +26,11 @@ enum SynthesisQuality: String, CaseIterable, Identifiable {
 @MainActor
 final class ProbeViewModel: ObservableObject {
     @Published var text = "你好，这是一段完全在本地生成的普通话语音。"
+    @Published var engineChoice: SynthesisEngineChoice = .compatibility {
+        didSet {
+            UserDefaults.standard.set(engineChoice.rawValue, forKey: Self.engineChoiceKey)
+        }
+    }
     @Published var quality: SynthesisQuality = .standard {
         didSet {
             UserDefaults.standard.set(quality.rawValue, forKey: Self.qualityKey)
@@ -35,25 +40,49 @@ final class ProbeViewModel: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var outputURL: URL?
 
-    private var process: Process?
+    private var activeEngine: SpeechEngine?
+    private var activeGenerationID: UUID?
     private var player: AVAudioPlayer?
     private var referencePlayer: AVAudioPlayer?
     private static let qualityKey = "SynthesisQuality"
+    private static let engineChoiceKey = "SynthesisEngineChoice"
 
     init() {
         if let stored = UserDefaults.standard.string(forKey: Self.qualityKey),
            let restored = SynthesisQuality(rawValue: stored) {
             quality = restored
         }
+        let storedChoice = UserDefaults.standard.string(forKey: Self.engineChoiceKey)
+            .flatMap(SynthesisEngineChoice.init(rawValue:))
+        let preferredChoice = storedChoice ?? .natural
+        engineChoice = preferredChoice == .natural && !RuntimeLocator.qwen.isAvailable
+            ? .compatibility
+            : preferredChoice
+        status = engineChoice == .natural
+            ? "自然人声引擎已就绪"
+            : "兼容模式已就绪"
     }
 
     var canGenerate: Bool {
         let count = text.trimmingCharacters(in: .whitespacesAndNewlines).count
-        return !isGenerating && count > 0 && count <= 500
+        return !isGenerating && count > 0 && count <= 500 && selectedEngineIsAvailable
     }
 
     var characterCountLabel: String {
         "\(text.count) / 500"
+    }
+
+    var naturalEngineAvailable: Bool {
+        RuntimeLocator.qwen.isAvailable
+    }
+
+    var naturalEngineUnavailableMessage: String? {
+        let missing = RuntimeLocator.qwen.missingComponents
+        return missing.isEmpty ? nil : "自然人声暂不可用：\(missing.joined(separator: "、"))"
+    }
+
+    var selectedEngineIsAvailable: Bool {
+        engineChoice == .compatibility || naturalEngineAvailable
     }
 
     func generate(using voice: VoiceProfile) {
@@ -64,16 +93,23 @@ final class ProbeViewModel: ObservableObject {
             return
         }
 
-        let referenceAudio = voice.referenceAudioURL
-        let referenceText = voice.referenceText
+        let engine: SpeechEngine = engineChoice == .natural
+            ? QwenSpeechEngine()
+            : ZipVoiceSpeechEngine()
+        guard engine.isAvailable else {
+            status = "生成失败：\(engine.unavailableReason ?? "所需资源未就绪")"
+            return
+        }
+
         let voiceName = voice.name
         let selectedQuality = quality
+        let generationID = UUID()
         isGenerating = true
         outputURL = nil
-        status = "正在使用“\(voiceName)”本地生成…"
+        activeEngine = engine
+        activeGenerationID = generationID
+        status = "正在使用“\(voiceName)”准备\(engine.displayName)…"
 
-        let process = Process()
-        self.process = process
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let started = Date()
             do {
@@ -85,96 +121,52 @@ final class ProbeViewModel: ObservableObject {
                 let shortID = UUID().uuidString.prefix(8)
                 let output = ProbeConfiguration.outputDirectory
                     .appendingPathComponent("普通话-\(stamp)-\(shortID).wav")
-                let rawOutput = ProbeConfiguration.outputDirectory
-                    .appendingPathComponent(".processing-\(UUID().uuidString).wav")
-                defer {
-                    try? FileManager.default.removeItem(at: rawOutput)
-                }
-
-                let model = ProbeConfiguration.model
-                process.executableURL = ProbeConfiguration.runtime
-                process.arguments = [
-                    "--zipvoice-encoder=\(model.appendingPathComponent("encoder.int8.onnx").path)",
-                    "--zipvoice-decoder=\(model.appendingPathComponent("decoder.int8.onnx").path)",
-                    "--zipvoice-data-dir=\(model.appendingPathComponent("espeak-ng-data").path)",
-                    "--zipvoice-lexicon=\(model.appendingPathComponent("lexicon.txt").path)",
-                    "--zipvoice-tokens=\(model.appendingPathComponent("tokens.txt").path)",
-                    "--zipvoice-vocoder=\(ProbeConfiguration.vocoder.path)",
-                    "--reference-audio=\(referenceAudio.path)",
-                    "--reference-text=\(referenceText)",
-                    "--num-steps=\(selectedQuality.steps)",
-                    "--num-threads=2",
-                    "--provider=cpu",
-                    "--output-filename=\(rawOutput.path)",
-                    requestedText,
-                ]
-                let stdout = Pipe()
-                let stderr = Pipe()
-                process.standardOutput = stdout
-                process.standardError = stderr
-
-                try process.run()
-                process.waitUntilExit()
-
-                guard process.terminationStatus == 0 else {
-                    let data = stderr.fileHandleForReading.readDataToEndOfFile()
-                    let message = String(data: data, encoding: .utf8)?
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    throw NSError(
-                        domain: "LocalAudioProbe",
-                        code: Int(process.terminationStatus),
-                        userInfo: [
-                            NSLocalizedDescriptionKey: message?.isEmpty == false
-                                ? message!
-                                : "语音进程退出码 \(process.terminationStatus)"
-                        ]
-                    )
-                }
-                guard FileManager.default.fileExists(atPath: rawOutput.path) else {
-                    throw NSError(
-                        domain: "LocalAudioProbe",
-                        code: 2,
-                        userInfo: [NSLocalizedDescriptionKey: "语音进程未生成 WAV 文件"]
-                    )
-                }
-
-                var postProcessWarning: String?
-                do {
-                    try AudioProcessor.postProcessOutput(from: rawOutput, to: output)
-                } catch {
-                    try FileManager.default.moveItem(at: rawOutput, to: output)
-                    postProcessWarning = "降噪后处理未完成，已保留原始音频"
+                let request = SpeechSynthesisRequest(
+                    text: requestedText,
+                    voice: voice,
+                    outputURL: output,
+                    zipVoiceSteps: selectedQuality.steps
+                )
+                let result = try engine.synthesize(request: request) { progress in
+                    DispatchQueue.main.async { [weak self] in
+                        guard self?.activeGenerationID == generationID else { return }
+                        self?.status = "\(engine.displayName) · \(progress.statusLabel)"
+                    }
                 }
 
                 let elapsed = Date().timeIntervalSince(started)
-                DispatchQueue.main.async {
-                    self?.process = nil
+                DispatchQueue.main.async { [weak self] in
+                    guard self?.activeGenerationID == generationID else { return }
+                    self?.activeEngine = nil
+                    self?.activeGenerationID = nil
                     self?.isGenerating = false
-                    self?.outputURL = output
-                    if let postProcessWarning {
-                        self?.status = "\(postProcessWarning) · \(String(format: "%.2f 秒", elapsed))"
+                    self?.outputURL = result.outputURL
+                    if let warning = result.warning {
+                        self?.status = "\(warning) · \(String(format: "%.2f 秒", elapsed))"
                     } else {
-                        self?.status = String(
-                            format: "“%@”%@生成完成，用时 %.2f 秒",
-                            voiceName,
-                            selectedQuality.label,
-                            elapsed
-                        )
+                        self?.status = "“\(voiceName)”\(engine.displayName)生成完成，用时 \(String(format: "%.2f 秒", elapsed))"
                     }
                 }
             } catch {
-                DispatchQueue.main.async {
-                    self?.process = nil
+                DispatchQueue.main.async { [weak self] in
+                    guard self?.activeGenerationID == generationID else { return }
+                    self?.activeEngine = nil
+                    self?.activeGenerationID = nil
                     self?.isGenerating = false
-                    self?.status = "生成失败：\(error.localizedDescription)"
+                    if case SpeechEngineError.cancelled = error {
+                        self?.status = "已取消"
+                    } else {
+                        self?.status = "生成失败：\(error.localizedDescription)"
+                    }
                 }
             }
         }
     }
 
     func cancel() {
-        process?.terminate()
-        process = nil
+        activeGenerationID = nil
+        activeEngine?.cancel()
+        activeEngine = nil
         isGenerating = false
         status = "已取消"
     }
@@ -252,7 +244,7 @@ struct ContentView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("本地普通话音频概览")
                             .font(.title2.bold())
-                        Text("GTCRN 本地降噪 · ZipVoice Distill INT8")
+                        Text(model.naturalEngineAvailable ? "本地自然人声 · 完全离线" : "本地语音 · 完全离线")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -323,6 +315,42 @@ struct ContentView: View {
                         .font(.headline)
                 }
 
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Picker("声音模式", selection: $model.engineChoice) {
+                            Text(SynthesisEngineChoice.natural.label)
+                                .tag(SynthesisEngineChoice.natural)
+                                .disabled(!model.naturalEngineAvailable)
+                            Text(SynthesisEngineChoice.compatibility.label)
+                                .tag(SynthesisEngineChoice.compatibility)
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(maxWidth: 420)
+                        .disabled(model.isGenerating)
+                        .accessibilityLabel("声音生成模式")
+
+                        if model.engineChoice == .natural {
+                            Text("更接近真人的语气和音色；第一次生成需要先载入本地模型。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("占用更低、生成更快，适合资源较少的电脑。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if let message = model.naturalEngineUnavailableMessage {
+                            Label(message, systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    .padding(4)
+                } label: {
+                    Text("生成方式")
+                        .font(.headline)
+                }
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("输入普通话")
                         .font(.headline)
@@ -338,21 +366,28 @@ struct ContentView: View {
                         Text(model.characterCountLabel)
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(model.text.count > 500 ? .red : .secondary)
-                        Picker("生成质量", selection: $model.quality) {
-                            ForEach(SynthesisQuality.allCases) { quality in
-                                Text(quality.label).tag(quality)
+                        if model.engineChoice == .compatibility {
+                            Picker("生成质量", selection: $model.quality) {
+                                ForEach(SynthesisQuality.allCases) { quality in
+                                    Text(quality.label).tag(quality)
+                                }
                             }
+                            .pickerStyle(.segmented)
+                            .frame(width: 220)
+                            .disabled(model.isGenerating)
+                        } else {
+                            Label("自然人声 · 自动高质量", systemImage: "waveform.badge.plus")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
-                        .pickerStyle(.segmented)
-                        .frame(width: 220)
-                        .disabled(model.isGenerating)
                         Spacer()
                         if model.isGenerating {
                             ProgressView()
                                 .controlSize(.small)
+                                .accessibilityLabel("正在生成本地语音")
                             Button("取消", role: .cancel) { model.cancel() }
                         } else {
-                            Button("使用“\(selectedVoice.name)”生成") {
+                            Button("使用“\(selectedVoice.name)”生成\(model.engineChoice == .natural ? "自然语音" : "")") {
                                 model.generate(using: selectedVoice)
                             }
                             .buttonStyle(.borderedProminent)
@@ -369,6 +404,7 @@ struct ContentView: View {
                             .foregroundStyle(model.outputURL == nil ? Color.secondary : Color.green)
                         Text(model.status)
                             .lineLimit(2)
+                            .accessibilityLabel("生成状态：\(model.status)")
                         Spacer()
                         Button("播放") { model.play() }
                             .disabled(model.outputURL == nil)

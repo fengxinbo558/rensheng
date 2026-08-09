@@ -18,6 +18,8 @@ run_test() {
     "${PROJECT_DIR}/AppConfiguration.swift" \
     "${PROJECT_DIR}/AudioProcessing.swift" \
     "${PROJECT_DIR}/VoiceLibrary.swift" \
+    "${PROJECT_DIR}/RuntimeLocator.swift" \
+    "${PROJECT_DIR}/SpeechEngine.swift" \
     "${test_source}" \
     -o "${test_root}/${test_name}"
 
@@ -29,3 +31,4 @@ run_test() {
 
 run_test "${TESTS_DIR}/VoiceLibrarySelfTest.swift"
 run_test "${TESTS_DIR}/LegacyVoiceMigrationSelfTest.swift"
+run_test "${TESTS_DIR}/SpeechEngineConfigurationSelfTest.swift"
