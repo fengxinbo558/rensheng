@@ -40,14 +40,15 @@ final class ProbeViewModel: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var outputURL: URL?
 
+    let playback: PlaybackController
+    let playbackContextID = "quick"
     private var activeEngine: SpeechEngine?
     private var activeGenerationID: UUID?
-    private var player: AVAudioPlayer?
-    private var referencePlayer: AVAudioPlayer?
     private static let qualityKey = "SynthesisQuality"
     private static let engineChoiceKey = "SynthesisEngineChoice"
 
-    init() {
+    init(playback: PlaybackController) {
+        self.playback = playback
         if let stored = UserDefaults.standard.string(forKey: Self.qualityKey),
            let restored = SynthesisQuality(rawValue: stored) {
             quality = restored
@@ -106,6 +107,7 @@ final class ProbeViewModel: ObservableObject {
         let generationID = UUID()
         isGenerating = true
         outputURL = nil
+        if playback.contextID == playbackContextID { playback.stopAndUnload() }
         activeEngine = engine
         activeGenerationID = generationID
         status = "正在使用“\(voiceName)”准备\(engine.displayName)…"
@@ -174,9 +176,11 @@ final class ProbeViewModel: ObservableObject {
     func play() {
         guard let outputURL else { return }
         do {
-            player = try AVAudioPlayer(contentsOf: outputURL)
-            player?.prepareToPlay()
-            player?.play()
+            try playback.play(
+                url: outputURL,
+                title: "快速生成结果",
+                contextID: playbackContextID
+            )
             status = "正在播放本地音频"
         } catch {
             status = "播放失败：\(error.localizedDescription)"
@@ -185,9 +189,11 @@ final class ProbeViewModel: ObservableObject {
 
     func playReference(_ voice: VoiceProfile) {
         do {
-            referencePlayer = try AVAudioPlayer(contentsOf: voice.referenceAudioURL)
-            referencePlayer?.prepareToPlay()
-            referencePlayer?.play()
+            try playback.play(
+                url: voice.referenceAudioURL,
+                title: "\(voice.name) · 参考音色",
+                contextID: playbackContextID
+            )
             status = "正在试听“\(voice.name)”的参考音频"
         } catch {
             status = "试听失败：\(error.localizedDescription)"
@@ -197,9 +203,11 @@ final class ProbeViewModel: ObservableObject {
     func playOriginalReference(_ voice: VoiceProfile) {
         guard let originalAudioURL = voice.originalAudioURL else { return }
         do {
-            referencePlayer = try AVAudioPlayer(contentsOf: originalAudioURL)
-            referencePlayer?.prepareToPlay()
-            referencePlayer?.play()
+            try playback.play(
+                url: originalAudioURL,
+                title: "\(voice.name) · 原始录音",
+                contextID: playbackContextID
+            )
             status = "正在试听“\(voice.name)”的原始录音"
         } catch {
             status = "试听失败：\(error.localizedDescription)"
@@ -230,9 +238,10 @@ private enum AppSection: String, CaseIterable, Identifiable {
 }
 
 struct ContentView: View {
-    @StateObject private var model = ProbeViewModel()
-    @StateObject private var voiceLibrary = VoiceLibrary()
-    @StateObject private var workspaceModel = NarrationWorkspaceModel()
+    @StateObject private var playback: PlaybackController
+    @StateObject private var model: ProbeViewModel
+    @StateObject private var voiceLibrary: VoiceLibrary
+    @StateObject private var workspaceModel: NarrationWorkspaceModel
     @State private var selectedSection: AppSection = .projects
     @State private var showingVoiceEditor = false
     @State private var voiceToDelete: VoiceProfile?
@@ -242,6 +251,16 @@ struct ContentView: View {
 
     private var selectedVoice: VoiceProfile {
         voiceLibrary.selectedProfile
+    }
+
+    init() {
+        let sharedPlayback = PlaybackController()
+        _playback = StateObject(wrappedValue: sharedPlayback)
+        _model = StateObject(wrappedValue: ProbeViewModel(playback: sharedPlayback))
+        _voiceLibrary = StateObject(wrappedValue: VoiceLibrary())
+        _workspaceModel = StateObject(
+            wrappedValue: NarrationWorkspaceModel(playback: sharedPlayback)
+        )
     }
 
     var body: some View {
@@ -465,7 +484,7 @@ struct ContentView: View {
 
                 Divider()
 
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 12) {
                     HStack {
                         Image(systemName: model.outputURL == nil ? "info.circle" : "checkmark.circle.fill")
                             .foregroundStyle(model.outputURL == nil ? Color.secondary : Color.green)
@@ -473,12 +492,18 @@ struct ContentView: View {
                             .lineLimit(2)
                             .accessibilityLabel("生成状态：\(model.status)")
                         Spacer()
-                        Button("播放") { model.play() }
-                            .disabled(model.outputURL == nil)
                         Button("在访达中显示") { model.revealOutput() }
                             .disabled(model.outputURL == nil)
                         Button("打开保存文件夹") { model.openOutputDirectory() }
                     }
+
+                    PlaybackControlsView(
+                        playback: playback,
+                        contextID: model.playbackContextID,
+                        fallbackTitle: model.outputURL == nil ? "尚无生成结果" : "快速生成结果",
+                        canStart: model.outputURL != nil,
+                        onStart: { model.play() }
+                    )
 
                     Text("音频固定保存到：音乐 / 本地音频概览")
                         .font(.caption)

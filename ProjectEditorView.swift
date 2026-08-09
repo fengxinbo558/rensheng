@@ -80,7 +80,12 @@ struct ProjectEditorView: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityLabel("朗读项目名称")
 
-            TextEditor(text: $model.draftText)
+            TextEditor(
+                text: Binding(
+                    get: { model.draftText },
+                    set: { model.updateDraftText($0) }
+                )
+            )
                 .font(.system(size: 15.5))
                 .lineSpacing(5)
                 .scrollContentBackground(.hidden)
@@ -100,7 +105,13 @@ struct ProjectEditorView: View {
                 .accessibilityHint("第一版最多支持 3000 个字")
 
             HStack(spacing: 10) {
-                Picker("朗读音色", selection: $model.draftVoiceID) {
+                Picker(
+                    "朗读音色",
+                    selection: Binding(
+                        get: { model.draftVoiceID },
+                        set: { model.updateDraftVoiceID($0) }
+                    )
+                ) {
                     ForEach(voiceLibrary.profiles) { voice in
                         Text(voice.name).tag(voice.id)
                     }
@@ -135,13 +146,26 @@ struct ProjectEditorView: View {
                 Text("蓝色节拍线表示每段的表达力度")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Stepper(
+                    value: Binding(
+                        get: { model.commonSpeedFactor },
+                        set: { model.applySpeedToAll($0) }
+                    ),
+                    in: NarrationSegment.minimumSpeedFactor...NarrationSegment.maximumSpeedFactor,
+                    step: 0.1
+                ) {
+                    Text(String(format: "全文 %.1f×", model.commonSpeedFactor))
+                        .font(.caption.monospacedDigit().weight(.semibold))
+                }
+                .accessibilityLabel("全文成品语速")
+                .accessibilityValue(String(format: "%.1f 倍", model.commonSpeedFactor))
             }
 
             ForEach(project.segments) { segment in
                 SegmentEditorRow(
                     segment: segment,
                     onExpression: { model.updateSegment(id: segment.id, expression: $0) },
-                    onSpeed: { model.updateSegment(id: segment.id, speed: $0) },
+                    onSpeed: { model.updateSegment(id: segment.id, speedFactor: $0) },
                     onPause: { model.updateSegment(id: segment.id, pause: $0) },
                     onPlay: { model.playSegment(segment) }
                 )
@@ -158,6 +182,11 @@ struct ProjectEditorView: View {
                     Text("已完成 \(model.completedSegmentCount) / \(project.segments.count) 段")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
+                    if model.estimatedFinalDuration > 0 {
+                        Text("预计成品 \(formattedDuration(model.estimatedFinalDuration))")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
                 if model.isFinishing {
@@ -184,6 +213,8 @@ struct ProjectEditorView: View {
 
             ProjectPlayerBar(
                 hasFinalAudio: !model.finalAudioURLs.isEmpty,
+                playback: model.playback,
+                contextID: project.id,
                 onPlay: { model.playFinal() },
                 onReveal: { model.revealFinal() }
             )
@@ -194,6 +225,11 @@ struct ProjectEditorView: View {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.black.opacity(0.07), lineWidth: 1)
         }
+    }
+
+    private func formattedDuration(_ duration: TimeInterval) -> String {
+        let seconds = max(0, Int(duration.rounded()))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 
     private var statusBar: some View {

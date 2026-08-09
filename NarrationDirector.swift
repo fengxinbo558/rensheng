@@ -47,7 +47,7 @@ struct NarrationDirector {
                 text: item.text,
                 kind: item.kind,
                 expression: defaults.expression,
-                speed: defaults.speed,
+                speedFactor: defaults.speedFactor,
                 pause: defaults.pause,
                 voiceID: voiceID
             )

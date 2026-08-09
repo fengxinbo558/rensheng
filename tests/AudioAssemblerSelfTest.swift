@@ -37,6 +37,7 @@ struct AudioAssemblerSelfTest {
                 order: 0,
                 text: "第一段。",
                 kind: .explanation,
+                speedFactor: 0.5,
                 pause: .short,
                 voiceID: project.voiceID
             ),
@@ -44,6 +45,7 @@ struct AudioAssemblerSelfTest {
                 order: 1,
                 text: "第二段。",
                 kind: .conclusion,
+                speedFactor: 2.0,
                 pause: .long,
                 voiceID: project.voiceID
             ),
@@ -64,11 +66,17 @@ struct AudioAssemblerSelfTest {
             withIntermediateDirectories: true
         )
         try AudioProcessor.writePCM16WAV(
-            PCM16Wave(sampleRate: 24_000, samples: Array(repeating: 0.08, count: 12_000)),
+            PCM16Wave(
+                sampleRate: 24_000,
+                samples: (0..<12_000).map { sin(2 * Double.pi * 330 * Double($0) / 24_000) * 0.08 }
+            ),
             to: firstURL
         )
         try AudioProcessor.writePCM16WAV(
-            PCM16Wave(sampleRate: 48_000, samples: Array(repeating: -0.16, count: 19_200)),
+            PCM16Wave(
+                sampleRate: 48_000,
+                samples: (0..<19_200).map { sin(2 * Double.pi * 440 * Double($0) / 48_000) * 0.16 }
+            ),
             to: secondURL
         )
 
@@ -101,7 +109,7 @@ struct AudioAssemblerSelfTest {
             destination: master
         )
         try audioExpect(result.segmentCount == 2, "成品段落数不正确")
-        try audioExpect(abs(result.durationSeconds - 1.15) < 0.03, "拼接时长或短停顿不正确：\(result.durationSeconds)")
+        try audioExpect(abs(result.durationSeconds - 1.45) < 0.04, "逐段变速、拼接时长或短停顿不正确：\(result.durationSeconds)")
         let masterQuality = try AudioProcessor.analyzePCM16WAV(at: master)
         try audioExpect(masterQuality.clippingFraction == 0, "拼接结果出现削波")
         try audioExpect(masterQuality.peakDBFS <= -0.9, "拼接结果峰值不安全")
@@ -115,8 +123,8 @@ struct AudioAssemblerSelfTest {
         try exporter.export(wav: master, to: mp3, format: .mp3)
         let m4aQuality = try AudioProcessor.analyzeAudio(at: m4a)
         let mp3Quality = try AudioProcessor.analyzeAudio(at: mp3)
-        try audioExpect(m4aQuality.duration > 1, "M4A 无法独立读取")
-        try audioExpect(mp3Quality.duration > 1, "MP3 无法独立读取")
+        try audioExpect(m4aQuality.duration > 1.4, "M4A 无法独立读取")
+        try audioExpect(mp3Quality.duration > 1.4, "MP3 无法独立读取")
 
         print("AudioAssemblerSelfTest: PASS")
         print("wav=\(master.path)")

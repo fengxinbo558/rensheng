@@ -13,7 +13,7 @@ struct GenerationProgressView: View {
                 Text("\(progress.completed) / \(progress.total)")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
-                Button("暂停", role: .cancel) { onCancel() }
+                Button("暂停生成", role: .cancel) { onCancel() }
             }
             ProgressView(
                 value: Double(progress.completed),

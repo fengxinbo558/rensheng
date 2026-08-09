@@ -20,7 +20,7 @@ struct NarrationExportRecord: Identifiable, Codable, Hashable {
 }
 
 struct NarrationProject: Identifiable, Codable, Hashable {
-    static let currentFormatVersion = 1
+    static let currentFormatVersion = 2
     static let maximumCharacterCount = 3_000
 
     var formatVersion: Int
@@ -65,6 +65,7 @@ struct NarrationProject: Identifiable, Codable, Hashable {
 
     func migratedToCurrentVersion() -> NarrationProject {
         var migrated = self
+        let previousVersion = migrated.formatVersion
         migrated.formatVersion = Self.currentFormatVersion
         for index in migrated.segments.indices {
             if migrated.segments[index].inputFingerprint.isEmpty {
@@ -72,10 +73,21 @@ struct NarrationProject: Identifiable, Codable, Hashable {
                 migrated.segments[index].candidates = []
                 migrated.segments[index].selectedCandidateID = nil
             }
-            migrated.segments[index].refreshFingerprint(
-                voiceID: migrated.voiceID,
-                invalidateChanged: true
-            )
+            if previousVersion < 2 {
+                migrated.segments[index].refreshFingerprint(
+                    voiceID: migrated.voiceID,
+                    invalidateChanged: false
+                )
+                let refreshed = migrated.segments[index].inputFingerprint
+                for candidateIndex in migrated.segments[index].candidates.indices {
+                    migrated.segments[index].candidates[candidateIndex].inputFingerprint = refreshed
+                }
+            } else {
+                migrated.segments[index].refreshFingerprint(
+                    voiceID: migrated.voiceID,
+                    invalidateChanged: true
+                )
+            }
         }
         return migrated
     }

@@ -2,7 +2,7 @@ import Foundation
 
 struct NarrationDefaults {
     let expression: NarrationExpression
-    let speed: NarrationSpeed
+    let speedFactor: Double
     let pause: NarrationPause
 }
 
@@ -41,17 +41,17 @@ enum NarrationRules {
     static func defaults(for kind: NarrationSegmentKind) -> NarrationDefaults {
         switch kind {
         case .title, .conclusion:
-            return NarrationDefaults(expression: .emphasized, speed: .slower, pause: .long)
+            return NarrationDefaults(expression: .emphasized, speedFactor: 0.9, pause: .long)
         case .definition:
-            return NarrationDefaults(expression: .steady, speed: .slower, pause: .normal)
+            return NarrationDefaults(expression: .steady, speedFactor: 0.9, pause: .normal)
         case .example:
-            return NarrationDefaults(expression: .friendly, speed: .normal, pause: .normal)
+            return NarrationDefaults(expression: .friendly, speedFactor: 1.0, pause: .normal)
         case .question:
-            return NarrationDefaults(expression: .friendly, speed: .normal, pause: .short)
+            return NarrationDefaults(expression: .friendly, speedFactor: 1.0, pause: .short)
         case .transition:
-            return NarrationDefaults(expression: .natural, speed: .normal, pause: .normal)
+            return NarrationDefaults(expression: .natural, speedFactor: 1.0, pause: .normal)
         case .explanation:
-            return NarrationDefaults(expression: .natural, speed: .normal, pause: .normal)
+            return NarrationDefaults(expression: .natural, speedFactor: 1.0, pause: .normal)
         }
     }
 

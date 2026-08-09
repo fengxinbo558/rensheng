@@ -68,6 +68,22 @@ struct ProjectStoreSelfTest {
         try projectExpect(loaded.segments.count == 2, "项目段落没有保存")
         try projectExpect(loaded.segments[0].selectedCandidateID == candidate.id, "已选音频版本没有保存")
 
+        var speedOnly = loaded
+        speedOnly.segments[0].speedFactor = 1.7
+        speedOnly.segments[0].refreshFingerprint(voiceID: speedOnly.voiceID, invalidateChanged: true)
+        try projectExpect(speedOnly.segments[0].inputFingerprint == firstFingerprint, "成品语速不应改变生成指纹")
+        try projectExpect(speedOnly.segments[0].generationState == .completed, "只改语速不应重新生成")
+        try projectExpect(speedOnly.segments[0].candidates.count == 1, "只改语速应保留段落母版")
+        speedOnly.segments[0].pause = .long
+        speedOnly.segments[0].refreshFingerprint(voiceID: speedOnly.voiceID, invalidateChanged: true)
+        try projectExpect(speedOnly.segments[0].generationState == .completed, "只改停顿不应重新生成")
+
+        var normalized = loaded.segments[1]
+        normalized.speedFactor = NarrationSegment.normalizedSpeedFactor(9.0)
+        try projectExpect(normalized.speedFactor == 3.0, "语速上限应限制为3倍")
+        normalized.speedFactor = NarrationSegment.normalizedSpeedFactor(0.01)
+        try projectExpect(normalized.speedFactor == 0.1, "语速下限应限制为0.1倍")
+
         var changed = loaded
         changed.segments[0].expression = .emphasized
         changed.refreshSegmentFingerprints(invalidateChanged: true)

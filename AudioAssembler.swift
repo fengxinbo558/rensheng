@@ -10,6 +10,7 @@ struct AudioAssemblyResult {
 final class AudioAssembler {
     private let store: ProjectStore
     private let sampleRate = 48_000.0
+    private let timeStretcher = AudioTimeStretcher()
 
     init(store: ProjectStore) {
         self.store = store
@@ -22,7 +23,7 @@ final class AudioAssembler {
         let segments = project.segments.sorted { $0.order < $1.order }
         guard !segments.isEmpty else { throw AudioAssemblerError.noSegments }
 
-        var combined: [Double] = []
+        let writer = try PCM16WaveStreamWriter(destination: destination, sampleRate: sampleRate)
         for (position, segment) in segments.enumerated() {
             guard segment.generationState == .completed,
                   let selectedID = segment.selectedCandidateID,
@@ -38,7 +39,17 @@ final class AudioAssembler {
                 throw AudioAssemblerError.missingSegment(position + 1)
             }
 
-            let wave = try AudioProcessor.readPCM16WAV(at: input)
+            let preparedInput = try speedAdjustedInput(
+                input,
+                segment: segment,
+                destinationDirectory: destination.deletingLastPathComponent()
+            )
+            defer {
+                if let temporaryURL = preparedInput.temporaryURL {
+                    try? FileManager.default.removeItem(at: temporaryURL)
+                }
+            }
+            let wave = try AudioProcessor.readPCM16WAV(at: preparedInput.audioURL)
             var samples = resample(
                 wave.samples,
                 from: wave.sampleRate,
@@ -47,24 +58,15 @@ final class AudioAssembler {
             guard !samples.isEmpty else { throw AudioAssemblerError.emptySegment(position + 1) }
             normalize(&samples)
             applyFades(&samples, milliseconds: 10)
-            combined.append(contentsOf: samples)
+            try writer.append(samples: samples)
 
             if position < segments.count - 1 {
-                combined.append(
-                    contentsOf: repeatElement(
-                        0.0,
-                        count: Int((pauseSeconds(segment.pause) * sampleRate).rounded())
-                    )
+                try writer.appendSilence(
+                    frameCount: Int((pauseSeconds(segment.pause) * sampleRate).rounded())
                 )
             }
         }
-
-        let parent = destination.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
-        try AudioProcessor.writePCM16WAV(
-            PCM16Wave(sampleRate: sampleRate, samples: combined),
-            to: destination
-        )
+        try writer.finish()
         let quality = try AudioProcessor.analyzePCM16WAV(at: destination)
         guard quality.duration > 0, quality.clippingFraction < 0.0001 else {
             throw AudioAssemblerError.invalidOutput
@@ -75,6 +77,22 @@ final class AudioAssembler {
             durationSeconds: quality.duration,
             sampleRate: sampleRate
         )
+    }
+
+    private func speedAdjustedInput(
+        _ input: URL,
+        segment: NarrationSegment,
+        destinationDirectory: URL
+    ) throws -> (audioURL: URL, temporaryURL: URL?) {
+        let rate = NarrationSegment.normalizedSpeedFactor(segment.speedFactor)
+        guard abs(rate - 1.0) > 0.001 else {
+            return (input, nil)
+        }
+        let temporary = destinationDirectory.appendingPathComponent(
+            ".\(segment.id).\(UUID().uuidString).speed.tmp.wav"
+        )
+        _ = try timeStretcher.stretch(input: input, output: temporary, rate: rate)
+        return (temporary, temporary)
     }
 
     private func resample(_ samples: [Double], from sourceRate: Double, to targetRate: Double) -> [Double] {

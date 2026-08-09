@@ -62,7 +62,7 @@ struct NarrationDirectorSelfTest {
             voiceID: "voice-test"
         )
         try directorExpect(defaults[0].expression == .emphasized, "标题应默认强调")
-        try directorExpect(defaults[0].speed == .slower, "标题应默认稍慢")
+        try directorExpect(defaults[0].speedFactor == 0.9, "标题应默认0.9倍")
         try directorExpect(defaults[0].pause == .long, "标题后应长停顿")
         try directorExpect(defaults[1].expression == .steady, "定义应默认沉稳")
         try directorExpect(defaults[2].expression == .friendly, "举例应默认亲切")

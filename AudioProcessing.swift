@@ -85,8 +85,14 @@ enum AudioProcessor {
             throw AudioProcessingError.unreadableAudio
         }
 
-        var samples: [Float] = []
-        samples.reserveCapacity(Int(file.length))
+        var sampleCount = 0
+        var sumSquares = 0.0
+        var peak = 0.0
+        var clippedCount = 0
+        let levelFrameSize = max(1, Int(format.sampleRate * 0.02))
+        var levelFrameCount = 0
+        var levelFrameSquares = 0.0
+        var frameLevels: [Double] = []
         while file.framePosition < file.length {
             let remaining = file.length - file.framePosition
             buffer.frameLength = 0
@@ -98,16 +104,46 @@ enum AudioProcessor {
                 for channel in 0..<channelCount {
                     mixed += channels[channel][frame]
                 }
-                samples.append(mixed / Float(max(channelCount, 1)))
+                let sample = Double(mixed / Float(max(channelCount, 1)))
+                let magnitude = abs(sample)
+                sampleCount += 1
+                sumSquares += sample * sample
+                peak = max(peak, magnitude)
+                if magnitude >= 0.999 { clippedCount += 1 }
+                levelFrameCount += 1
+                levelFrameSquares += sample * sample
+                if levelFrameCount == levelFrameSize {
+                    frameLevels.append(db(sqrt(levelFrameSquares / Double(levelFrameCount))))
+                    levelFrameCount = 0
+                    levelFrameSquares = 0
+                }
             }
         }
-
-        return qualitySummary(samples: samples.map(Double.init), sampleRate: format.sampleRate)
+        if levelFrameCount > 0 {
+            frameLevels.append(db(sqrt(levelFrameSquares / Double(levelFrameCount))))
+        }
+        guard sampleCount > 0 else {
+            return AudioQualitySummary(
+                duration: 0,
+                peakDBFS: -120,
+                rmsDBFS: -120,
+                noiseFloorDBFS: -120,
+                clippingFraction: 0
+            )
+        }
+        frameLevels.sort()
+        let noiseIndex = frameLevels.isEmpty ? 0 : Int(Double(frameLevels.count - 1) * 0.20)
+        return AudioQualitySummary(
+            duration: Double(sampleCount) / format.sampleRate,
+            peakDBFS: db(peak),
+            rmsDBFS: db(sqrt(sumSquares / Double(sampleCount))),
+            noiseFloorDBFS: frameLevels.isEmpty ? -120 : frameLevels[noiseIndex],
+            clippingFraction: Double(clippedCount) / Double(sampleCount)
+        )
     }
 
     static func analyzePCM16WAV(at url: URL) throws -> AudioQualitySummary {
-        let wave = try readPCM16WAV(at: url)
-        return qualitySummary(samples: wave.samples, sampleRate: wave.sampleRate)
+        try analyzeAudio(at: url)
     }
 
     static func normalizeReference(from source: URL, to destination: URL) throws {
@@ -363,5 +399,107 @@ enum AudioProcessor {
         withUnsafeBytes(of: &littleEndian) { bytes in
             data.append(contentsOf: bytes)
         }
+    }
+}
+
+final class PCM16WaveStreamWriter {
+    private let destination: URL
+    private let temporary: URL
+    private let sampleRate: UInt32
+    private var handle: FileHandle?
+    private(set) var sampleCount: UInt64 = 0
+
+    init(destination: URL, sampleRate: Double) throws {
+        self.destination = destination
+        self.sampleRate = UInt32(sampleRate.rounded())
+        let parent = destination.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true)
+        temporary = parent.appendingPathComponent(".\(UUID().uuidString).stream.tmp.wav")
+        guard FileManager.default.createFile(atPath: temporary.path, contents: Data(count: 44)) else {
+            throw AudioProcessingError.couldNotWrite
+        }
+        handle = try FileHandle(forWritingTo: temporary)
+        try handle?.seekToEnd()
+    }
+
+    deinit {
+        try? handle?.close()
+        try? FileManager.default.removeItem(at: temporary)
+    }
+
+    func append(samples: [Double]) throws {
+        guard let handle else { throw AudioProcessingError.couldNotWrite }
+        let chunkSize = 32_768
+        var offset = 0
+        while offset < samples.count {
+            let end = min(offset + chunkSize, samples.count)
+            var data = Data(capacity: (end - offset) * 2)
+            for sample in samples[offset..<end] {
+                let clamped = max(-1, min(1, sample))
+                let integer = Int16(max(-32_768, min(32_767, Int((clamped * 32_767).rounded()))))
+                var littleEndian = UInt16(bitPattern: integer).littleEndian
+                withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
+            }
+            try handle.write(contentsOf: data)
+            sampleCount += UInt64(end - offset)
+            offset = end
+        }
+    }
+
+    func appendSilence(frameCount: Int) throws {
+        guard let handle else { throw AudioProcessingError.couldNotWrite }
+        var remaining = max(0, frameCount)
+        let zeroChunk = Data(count: 65_536)
+        while remaining > 0 {
+            let frames = min(remaining, zeroChunk.count / 2)
+            try handle.write(contentsOf: zeroChunk.prefix(frames * 2))
+            sampleCount += UInt64(frames)
+            remaining -= frames
+        }
+    }
+
+    func finish() throws {
+        guard let handle else { throw AudioProcessingError.couldNotWrite }
+        let audioByteCount = sampleCount * 2
+        guard audioByteCount <= UInt64(UInt32.max) - 36 else {
+            throw PCM16WaveStreamWriterError.outputTooLong
+        }
+        var header = Data()
+        header.append("RIFF".data(using: .ascii)!)
+        append(UInt32(36 + audioByteCount), to: &header)
+        header.append("WAVEfmt ".data(using: .ascii)!)
+        append(UInt32(16), to: &header)
+        append(UInt16(1), to: &header)
+        append(UInt16(1), to: &header)
+        append(sampleRate, to: &header)
+        append(sampleRate * 2, to: &header)
+        append(UInt16(2), to: &header)
+        append(UInt16(16), to: &header)
+        header.append("data".data(using: .ascii)!)
+        append(UInt32(audioByteCount), to: &header)
+        try handle.seek(toOffset: 0)
+        try handle.write(contentsOf: header)
+        try handle.synchronize()
+        try handle.close()
+        self.handle = nil
+
+        if FileManager.default.fileExists(atPath: destination.path) {
+            _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
+        } else {
+            try FileManager.default.moveItem(at: temporary, to: destination)
+        }
+    }
+
+    private func append<T: FixedWidthInteger>(_ value: T, to data: inout Data) {
+        var littleEndian = value.littleEndian
+        withUnsafeBytes(of: &littleEndian) { data.append(contentsOf: $0) }
+    }
+}
+
+enum PCM16WaveStreamWriterError: LocalizedError {
+    case outputTooLong
+
+    var errorDescription: String? {
+        "当前语速会产生超过 WAV 格式上限的超长音频，请提高语速或缩短文章"
     }
 }

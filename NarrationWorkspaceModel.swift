@@ -1,5 +1,4 @@
 import AppKit
-import AVFoundation
 import Foundation
 
 @MainActor
@@ -17,11 +16,15 @@ final class NarrationWorkspaceModel: ObservableObject {
 
     private let store: ProjectStore
     private let director = NarrationDirector()
+    let playback: PlaybackController
     private var activeQueue: GenerationQueue?
-    private var player: AVAudioPlayer?
 
-    init(store: ProjectStore = ProjectStore()) {
+    init(
+        store: ProjectStore = ProjectStore(),
+        playback: PlaybackController
+    ) {
         self.store = store
+        self.playback = playback
         reloadProjects()
         if let mostRecentProject = projects.first {
             selectProject(mostRecentProject)
@@ -55,11 +58,39 @@ final class NarrationWorkspaceModel: ObservableObject {
         return selectedProject.segments.allSatisfy { $0.generationState == .completed }
     }
 
+    var commonSpeedFactor: Double {
+        guard let segments = selectedProject?.segments, let first = segments.first else { return 1.0 }
+        return segments.dropFirst().allSatisfy { abs($0.speedFactor - first.speedFactor) < 0.001 }
+            ? first.speedFactor
+            : 1.0
+    }
+
+    var estimatedFinalDuration: TimeInterval {
+        guard let project = selectedProject else { return 0 }
+        return project.segments.reduce(0) { total, segment in
+            let sourceDuration = segment.candidates
+                .first(where: { $0.id == segment.selectedCandidateID })?
+                .durationSeconds ?? 0
+            return total + sourceDuration / max(segment.speedFactor, 0.1) + pauseSeconds(segment.pause)
+        }
+    }
+
     func setDefaultVoiceIfNeeded(_ voiceID: String) {
         if draftVoiceID.isEmpty { draftVoiceID = voiceID }
     }
 
+    func updateDraftText(_ text: String) {
+        draftText = text
+        refreshDraftAudioAvailability()
+    }
+
+    func updateDraftVoiceID(_ voiceID: String) {
+        draftVoiceID = voiceID
+        refreshDraftAudioAvailability()
+    }
+
     func startNewProject(defaultVoiceID: String) {
+        playback.stopAndUnload()
         selectedProject = nil
         draftName = ""
         draftText = ""
@@ -71,6 +102,7 @@ final class NarrationWorkspaceModel: ObservableObject {
 
     func selectProject(_ project: NarrationProject) {
         do {
+            playback.stopAndUnload()
             let loaded = try store.loadProject(id: project.id)
             selectedProject = loaded
             draftName = loaded.name
@@ -97,6 +129,7 @@ final class NarrationWorkspaceModel: ObservableObject {
                 existing.updatedAt = Date()
                 existing.segments = merge(analyzed: analyzed, with: existing.segments, voiceID: draftVoiceID)
                 existing.refreshSegmentFingerprints(invalidateChanged: true)
+                existing.exports = []
                 project = existing
             } else {
                 project = try store.createProject(
@@ -121,26 +154,55 @@ final class NarrationWorkspaceModel: ObservableObject {
     func updateSegment(
         id: String,
         expression: NarrationExpression? = nil,
-        speed: NarrationSpeed? = nil,
+        speedFactor: Double? = nil,
         pause: NarrationPause? = nil
     ) {
         guard var project = selectedProject,
               let index = project.segments.firstIndex(where: { $0.id == id }) else { return }
         if let expression { project.segments[index].expression = expression }
-        if let speed { project.segments[index].speed = speed }
+        if let speedFactor {
+            project.segments[index].speedFactor = NarrationSegment.normalizedSpeedFactor(speedFactor)
+        }
         if let pause { project.segments[index].pause = pause }
         project.segments[index].refreshFingerprint(
             voiceID: project.voiceID,
             invalidateChanged: true
         )
         project.updatedAt = Date()
+        project.exports = []
         do {
             try store.save(project)
             selectedProject = project
+            finalAudioURLs = [:]
+            if playback.contextID == project.id { playback.stopAndUnload() }
             reloadProjects(selecting: project.id)
-            status = "第 \(project.segments[index].order + 1) 段已更新"
+            if expression == nil {
+                status = "第 \(project.segments[index].order + 1) 段成品设置已更新；母版保留，无需重新生成"
+            } else {
+                status = "第 \(project.segments[index].order + 1) 段表达已更新，需要重新生成"
+            }
         } catch {
             status = "段落保存失败：\(error.localizedDescription)"
+        }
+    }
+
+    func applySpeedToAll(_ requestedSpeed: Double) {
+        guard var project = selectedProject else { return }
+        let speed = NarrationSegment.normalizedSpeedFactor(requestedSpeed)
+        for index in project.segments.indices {
+            project.segments[index].speedFactor = speed
+        }
+        project.exports = []
+        project.updatedAt = Date()
+        do {
+            try store.save(project)
+            selectedProject = project
+            finalAudioURLs = [:]
+            if playback.contextID == project.id { playback.stopAndUnload() }
+            reloadProjects(selecting: project.id)
+            status = String(format: "全文成品语速已设为 %.1f×；段落母版保留", speed)
+        } catch {
+            status = "全文语速保存失败：\(error.localizedDescription)"
         }
     }
 
@@ -208,6 +270,7 @@ final class NarrationWorkspaceModel: ObservableObject {
         let projectID = project.id
         let store = self.store
         let owner = self
+        if playback.contextID == project.id { playback.stopAndUnload() }
 
         DispatchQueue.global(qos: .userInitiated).async {
             do {
@@ -257,12 +320,28 @@ final class NarrationWorkspaceModel: ObservableObject {
                 projectID: project.id,
                 relativePath: candidate.relativePath
               ) else { return }
-        play(url, status: "正在播放第 \(segment.order + 1) 段")
+        do {
+            try playback.play(
+                url: url,
+                title: "第 \(segment.order + 1) 段 · \(segment.kind.label)",
+                contextID: project.id,
+                initialRate: segment.speedFactor
+            )
+            status = String(format: "正在按成品语速 %.1f× 播放第 %d 段", segment.speedFactor, segment.order + 1)
+        } catch {
+            status = "播放失败：\(error.localizedDescription)"
+        }
     }
 
     func playFinal(_ format: AudioExportFormat = .m4a) {
         guard let url = finalAudioURLs[format] ?? finalAudioURLs[.wav] else { return }
-        play(url, status: "正在播放朗读成品")
+        guard let project = selectedProject else { return }
+        do {
+            try playback.play(url: url, title: "朗读成品", contextID: project.id)
+            status = "正在播放朗读成品"
+        } catch {
+            status = "播放失败：\(error.localizedDescription)"
+        }
     }
 
     func revealFinal() {
@@ -333,6 +412,17 @@ final class NarrationWorkspaceModel: ObservableObject {
 
     private func loadFinalURLs(from project: NarrationProject) {
         var urls: [AudioExportFormat: URL] = [:]
+        guard !project.segments.isEmpty,
+              project.segments.allSatisfy({ segment in
+                  segment.generationState == .completed
+                      && segment.candidates.contains(where: {
+                          $0.id == segment.selectedCandidateID
+                              && $0.inputFingerprint == segment.inputFingerprint
+                      })
+              }) else {
+            finalAudioURLs = [:]
+            return
+        }
         for item in project.exports {
             guard let format = AudioExportFormat(rawValue: item.format),
                   let url = try? store.resolveProjectFileURL(
@@ -345,14 +435,24 @@ final class NarrationWorkspaceModel: ObservableObject {
         finalAudioURLs = urls
     }
 
-    private func play(_ url: URL, status: String) {
-        do {
-            player = try AVAudioPlayer(contentsOf: url)
-            player?.prepareToPlay()
-            player?.play()
-            self.status = status
-        } catch {
-            self.status = "播放失败：\(error.localizedDescription)"
+    private func refreshDraftAudioAvailability() {
+        guard let project = selectedProject else { return }
+        let draftMatchesSavedAudio = draftText == project.sourceText
+            && draftVoiceID == project.voiceID
+        if draftMatchesSavedAudio {
+            loadFinalURLs(from: project)
+        } else {
+            finalAudioURLs = [:]
+            if playback.contextID == project.id { playback.stopAndUnload() }
+            status = "文章或音色已经修改，请重新分析并保存后再制作成品"
+        }
+    }
+
+    private func pauseSeconds(_ pause: NarrationPause) -> Double {
+        switch pause {
+        case .short: return 0.25
+        case .normal: return 0.55
+        case .long: return 0.9
         }
     }
 }

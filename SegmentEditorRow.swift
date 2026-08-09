@@ -3,7 +3,7 @@ import SwiftUI
 struct SegmentEditorRow: View {
     let segment: NarrationSegment
     let onExpression: (NarrationExpression) -> Void
-    let onSpeed: (NarrationSpeed) -> Void
+    let onSpeed: (Double) -> Void
     let onPause: (NarrationPause) -> Void
     let onPlay: () -> Void
 
@@ -45,14 +45,16 @@ struct SegmentEditorRow: View {
                             Text(item.label).tag(item)
                         }
                     }
-                    Picker(
-                        "速度",
-                        selection: Binding(get: { segment.speed }, set: onSpeed)
+                    Stepper(
+                        value: Binding(get: { segment.speedFactor }, set: onSpeed),
+                        in: NarrationSegment.minimumSpeedFactor...NarrationSegment.maximumSpeedFactor,
+                        step: 0.1
                     ) {
-                        ForEach(NarrationSpeed.allCases) { item in
-                            Text(item.label).tag(item)
-                        }
+                        Text(String(format: "成品 %.1f×", segment.speedFactor))
+                            .font(.caption.monospacedDigit())
                     }
+                    .accessibilityLabel("第 \(segment.order + 1) 段成品语速")
+                    .accessibilityValue(String(format: "%.1f 倍", segment.speedFactor))
                     Picker(
                         "段后停顿",
                         selection: Binding(get: { segment.pause }, set: onPause)
@@ -64,6 +66,12 @@ struct SegmentEditorRow: View {
                     Spacer()
                 }
                 .controlSize(.small)
+
+                if segment.usesExtremeSpeed {
+                    Label("极端成品语速可能出现明显拉伸感", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
             }
         }
         .padding(16)

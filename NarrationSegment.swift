@@ -42,18 +42,16 @@ enum NarrationExpression: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-enum NarrationSpeed: String, Codable, CaseIterable, Identifiable {
+private enum LegacyNarrationSpeed: String, Codable {
     case slower
     case normal
     case faster
 
-    var id: String { rawValue }
-
-    var label: String {
+    var factor: Double {
         switch self {
-        case .slower: return "稍慢"
-        case .normal: return "正常"
-        case .faster: return "稍快"
+        case .slower: return 0.9
+        case .normal: return 1.0
+        case .faster: return 1.1
         }
     }
 }
@@ -85,7 +83,7 @@ enum SegmentGenerationState: String, Codable {
 struct NarrationAudioCandidate: Identifiable, Codable, Hashable {
     let id: String
     let relativePath: String
-    let inputFingerprint: String
+    var inputFingerprint: String
     let engineName: String
     let durationSeconds: Double
     let createdAt: Date
@@ -113,7 +111,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
     var text: String
     var kind: NarrationSegmentKind
     var expression: NarrationExpression
-    var speed: NarrationSpeed
+    var speedFactor: Double
     var pause: NarrationPause
     var inputFingerprint: String
     var generationState: SegmentGenerationState
@@ -128,7 +126,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         text: String,
         kind: NarrationSegmentKind,
         expression: NarrationExpression = .natural,
-        speed: NarrationSpeed = .normal,
+        speedFactor: Double = 1.0,
         pause: NarrationPause = .normal,
         voiceID: String
     ) {
@@ -137,7 +135,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         self.text = text
         self.kind = kind
         self.expression = expression
-        self.speed = speed
+        self.speedFactor = Self.normalizedSpeedFactor(speedFactor)
         self.pause = pause
         inputFingerprint = ""
         generationState = .pending
@@ -153,8 +151,6 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
             text: text,
             kind: kind,
             expression: expression,
-            speed: speed,
-            pause: pause,
             voiceID: voiceID
         )
         let changed = !inputFingerprint.isEmpty && inputFingerprint != refreshed
@@ -174,16 +170,12 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         text: String,
         kind: NarrationSegmentKind,
         expression: NarrationExpression,
-        speed: NarrationSpeed,
-        pause: NarrationPause,
         voiceID: String
     ) -> String {
         let value = [
             text,
             kind.rawValue,
             expression.rawValue,
-            speed.rawValue,
-            pause.rawValue,
             voiceID,
         ].joined(separator: "\u{1f}")
         var hash: UInt64 = 14_695_981_039_346_656_037
@@ -195,7 +187,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, order, text, kind, expression, speed, pause, inputFingerprint
+        case id, order, text, kind, expression, speedFactor, speed, pause, inputFingerprint
         case generationState, generationAttempts, candidates, selectedCandidateID, errorSummary
     }
 
@@ -208,7 +200,13 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
             ?? .explanation
         expression = try container.decodeIfPresent(NarrationExpression.self, forKey: .expression)
             ?? .natural
-        speed = try container.decodeIfPresent(NarrationSpeed.self, forKey: .speed) ?? .normal
+        if let storedFactor = try container.decodeIfPresent(Double.self, forKey: .speedFactor) {
+            speedFactor = Self.normalizedSpeedFactor(storedFactor)
+        } else {
+            let legacySpeed = try container.decodeIfPresent(LegacyNarrationSpeed.self, forKey: .speed)
+                ?? .normal
+            speedFactor = legacySpeed.factor
+        }
         pause = try container.decodeIfPresent(NarrationPause.self, forKey: .pause) ?? .normal
         inputFingerprint = try container.decodeIfPresent(String.self, forKey: .inputFingerprint)
             ?? ""
@@ -224,5 +222,35 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         ) ?? []
         selectedCandidateID = try container.decodeIfPresent(String.self, forKey: .selectedCandidateID)
         errorSummary = try container.decodeIfPresent(String.self, forKey: .errorSummary)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(order, forKey: .order)
+        try container.encode(text, forKey: .text)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(expression, forKey: .expression)
+        try container.encode(Self.normalizedSpeedFactor(speedFactor), forKey: .speedFactor)
+        try container.encode(pause, forKey: .pause)
+        try container.encode(inputFingerprint, forKey: .inputFingerprint)
+        try container.encode(generationState, forKey: .generationState)
+        try container.encode(generationAttempts, forKey: .generationAttempts)
+        try container.encode(candidates, forKey: .candidates)
+        try container.encodeIfPresent(selectedCandidateID, forKey: .selectedCandidateID)
+        try container.encodeIfPresent(errorSummary, forKey: .errorSummary)
+    }
+
+    static let minimumSpeedFactor = 0.1
+    static let maximumSpeedFactor = 3.0
+
+    static func normalizedSpeedFactor(_ value: Double) -> Double {
+        let finite = value.isFinite ? value : 1.0
+        let clamped = min(max(finite, minimumSpeedFactor), maximumSpeedFactor)
+        return (clamped * 10).rounded() / 10
+    }
+
+    var usesExtremeSpeed: Bool {
+        speedFactor < 0.6 || speedFactor > 2.0
     }
 }

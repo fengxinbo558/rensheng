@@ -30,6 +30,8 @@ run_test() {
     "${PROJECT_DIR}/GenerationQueue.swift" \
     "${PROJECT_DIR}/AudioAssembler.swift" \
     "${PROJECT_DIR}/AudioExporter.swift" \
+    "${PROJECT_DIR}/AudioTimeStretcher.swift" \
+    "${PROJECT_DIR}/PlaybackController.swift" \
     "${test_source}" \
     -o "${test_root}/${test_name}"
 
@@ -48,3 +50,5 @@ run_test "${TESTS_DIR}/ProjectMigrationSelfTest.swift"
 run_test "${TESTS_DIR}/NarrationDirectorSelfTest.swift"
 run_test "${TESTS_DIR}/GenerationQueueSelfTest.swift"
 run_test "${TESTS_DIR}/AudioAssemblerSelfTest.swift"
+run_test "${TESTS_DIR}/AudioTimeStretcherSelfTest.swift"
+run_test "${TESTS_DIR}/PlaybackControllerSelfTest.swift"
