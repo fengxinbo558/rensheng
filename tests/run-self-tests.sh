@@ -23,12 +23,15 @@ run_test() {
     "${PROJECT_DIR}/NarrationSegment.swift" \
     "${PROJECT_DIR}/NarrationProject.swift" \
     "${PROJECT_DIR}/ProjectStore.swift" \
+    "${PROJECT_DIR}/NarrationRules.swift" \
+    "${PROJECT_DIR}/NarrationDirector.swift" \
     "${test_source}" \
     -o "${test_root}/${test_name}"
 
   LOCAL_AUDIO_PROBE_TEST_ROOT="${test_root}" \
   LOCAL_AUDIO_PROBE_APP_SUPPORT="${test_root}/ApplicationSupport" \
   LOCAL_AUDIO_PROBE_OUTPUT_DIR="${test_root}/Output" \
+  LOCAL_AUDIO_PROBE_TEST_FIXTURES="${TESTS_DIR}/fixtures" \
     "${test_root}/${test_name}"
 }
 
@@ -37,3 +40,4 @@ run_test "${TESTS_DIR}/LegacyVoiceMigrationSelfTest.swift"
 run_test "${TESTS_DIR}/SpeechEngineConfigurationSelfTest.swift"
 run_test "${TESTS_DIR}/ProjectStoreSelfTest.swift"
 run_test "${TESTS_DIR}/ProjectMigrationSelfTest.swift"
+run_test "${TESTS_DIR}/NarrationDirectorSelfTest.swift"

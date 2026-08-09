@@ -1,0 +1,17 @@
+[
+  {
+    "name": "knowledge-structures",
+    "text": "人工智能基础\n\n所谓机器学习，是指让计算机从数据中总结规律。\n\n例如，垃圾邮件过滤器会学习哪些词语经常出现在垃圾邮件中。\n\n为什么数据质量如此重要？\n\n因此，可靠的数据往往比盲目增加模型大小更关键。",
+    "expectedKinds": ["title", "definition", "example", "question", "conclusion"]
+  },
+  {
+    "name": "numbers-and-english",
+    "text": "版本 2.5 在 2026 年发布，准确率为 98.7%。例如，它可以处理 e.g. 和 API 等英文缩写。",
+    "expectedKinds": ["explanation", "example"]
+  },
+  {
+    "name": "numbered-list",
+    "text": "学习步骤\n\n1、先明确问题。\n2、其次收集资料。\n3、最后验证结论。",
+    "expectedKinds": ["title", "transition", "transition", "conclusion"]
+  }
+]
