@@ -1,0 +1,12 @@
+.DS_Store
+.build/
+.swiftpm/
+build/
+*.dSYM/
+*.log
+*.tmp
+__pycache__/
+*.pyc
+.runtime-staging/
+.portable-runtime/
+tests/.generated/
