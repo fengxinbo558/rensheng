@@ -16,6 +16,7 @@ ZIPVOICE_SOURCE="${WORKSPACE_ROOT}/spike/models/exploratory/sherpa-onnx-zipvoice
 VOCODER_SOURCE="${WORKSPACE_ROOT}/spike/models/exploratory/vocos_24khz.onnx"
 DENOISER_SOURCE="${WORKSPACE_ROOT}/spike/models/exploratory/sherpa-onnx-speech-enhancement/gtcrn_simple.onnx"
 REFERENCE_SOURCE="${WORKSPACE_ROOT}/spike/fixtures/voice-clone-v1/data/system-voice-smoke-reference.wav"
+MP3_ENCODER_SOURCE="${SCRIPT_DIR}/Runtime/MP3Encoder"
 
 case "${BUILD_FLAVOR}" in
   developer|portable) ;;
@@ -30,7 +31,10 @@ for required_path in \
   "${ZIPVOICE_SOURCE}" \
   "${VOCODER_SOURCE}" \
   "${DENOISER_SOURCE}" \
-  "${REFERENCE_SOURCE}"; do
+  "${REFERENCE_SOURCE}" \
+  "${MP3_ENCODER_SOURCE}/lame" \
+  "${MP3_ENCODER_SOURCE}/COPYING" \
+  "${MP3_ENCODER_SOURCE}/lame-3.100.tar.gz"; do
   if [[ ! -e "${required_path}" ]]; then
     print -u2 -- "缺少应用资源：${required_path}"
     exit 1
@@ -49,6 +53,8 @@ cp "${SCRIPT_DIR}/Info.plist" "${CONTENTS_PATH}/Info.plist"
 cp "${VOCODER_SOURCE}" "${RESOURCES_PATH}/Models/vocos_24khz.onnx"
 cp "${DENOISER_SOURCE}" "${RESOURCES_PATH}/Models/gtcrn_simple.onnx"
 cp "${REFERENCE_SOURCE}" "${RESOURCES_PATH}/Fixtures/default-reference.wav"
+/usr/bin/ditto --norsrc "${MP3_ENCODER_SOURCE}" "${RESOURCES_PATH}/MP3Encoder"
+chmod +x "${RESOURCES_PATH}/MP3Encoder/lame"
 
 if [[ "${BUILD_FLAVOR}" == "portable" ]]; then
   plutil -insert LocalAudioPortableRuntime -bool true "${CONTENTS_PATH}/Info.plist"

@@ -71,6 +71,11 @@ enum AudioProcessingError: LocalizedError {
     }
 }
 
+struct PCM16Wave {
+    let sampleRate: Double
+    var samples: [Double]
+}
+
 enum AudioProcessor {
     static func analyzeAudio(at url: URL) throws -> AudioQualitySummary {
         let file = try AVAudioFile(forReading: url)
@@ -258,12 +263,7 @@ enum AudioProcessor {
         pow(10, db / 20)
     }
 
-    private struct PCM16Wave {
-        let sampleRate: Double
-        var samples: [Double]
-    }
-
-    private static func readPCM16WAV(at url: URL) throws -> PCM16Wave {
+    static func readPCM16WAV(at url: URL) throws -> PCM16Wave {
         let data = try Data(contentsOf: url)
         guard data.count >= 12,
               ascii(data, range: 0..<4) == "RIFF",
@@ -314,7 +314,7 @@ enum AudioProcessor {
         return PCM16Wave(sampleRate: Double(sampleRate), samples: samples)
     }
 
-    private static func writePCM16WAV(_ wave: PCM16Wave, to url: URL) throws {
+    static func writePCM16WAV(_ wave: PCM16Wave, to url: URL) throws {
         let sampleRate = UInt32(wave.sampleRate.rounded())
         let audioByteCount = wave.samples.count * 2
         var data = Data()
