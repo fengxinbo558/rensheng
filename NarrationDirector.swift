@@ -1,8 +1,8 @@
 import Foundation
 
 struct NarrationDirector {
-    private let targetMaximum = 100
-    private let hardMaximum = 120
+    private let targetMaximum = SpokenScriptValidator.preferredMaximumCharacters
+    private let hardMaximum = SpokenScriptValidator.hardMaximumCharacters
 
     func analyze(text: String, voiceID: String) throws -> [NarrationSegment] {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -100,7 +100,7 @@ struct NarrationDirector {
         let preferredBreaks: Set<Character> = ["，", ",", "、", "：", ":"]
 
         while remaining.count > hardMaximum {
-            let searchUpper = min(110, remaining.count)
+            let searchUpper = min(targetMaximum, remaining.count)
             var cut = hardMaximum
             if searchUpper >= 40 {
                 for index in stride(from: searchUpper - 1, through: 39, by: -1) {

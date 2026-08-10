@@ -24,7 +24,7 @@ protocol SpokenScriptDirecting {
 }
 
 struct RuleSpokenScriptDirector: SpokenScriptDirecting {
-    let version = "rule-zh-v1"
+    let version = "rule-zh-continuous-v2"
     private let validator = SpokenScriptValidator()
 
     func prepare(sourceText: String, mode: NarrationScriptMode) throws -> SpokenScriptResult {
@@ -40,7 +40,9 @@ struct RuleSpokenScriptDirector: SpokenScriptDirecting {
                 sourceText: sourceText,
                 segments: prepared,
                 requiresExactWording: true,
-                maximumCharacters: mode == .spoken ? 70 : 120
+                maximumCharacters: mode == .spoken
+                    ? SpokenScriptValidator.hardMaximumCharacters
+                    : 120
             )
             return SpokenScriptResult(
                 requestedMode: mode,

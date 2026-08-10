@@ -28,7 +28,7 @@ struct SpokenScriptDirectorSelfTest {
         let first = try director.prepare(sourceText: source, mode: .spoken)
         let second = try director.prepare(sourceText: source, mode: .spoken)
         try spokenExpect(first.appliedMode == .spoken, "安全输入不应回退逐字朗读")
-        try spokenExpect(first.version == "rule-zh-v1", "口语规则版本不正确")
+        try spokenExpect(first.version == "rule-zh-continuous-v2", "口语规则版本不正确")
         try spokenExpect(!first.outline.isEmpty, "没有生成提纲")
         try spokenExpect(first.segments.map(\.id) == second.segments.map(\.id), "同一输入的段落 ID 不稳定")
         try spokenExpect(
@@ -36,7 +36,7 @@ struct SpokenScriptDirectorSelfTest {
                 !$0.spokenText.isEmpty
                     && $0.spokenText.count <= SpokenScriptValidator.preferredMaximumCharacters
             },
-            "口语段落没有按短句整理"
+            "口语段落没有按连续语义段整理"
         )
         let spoken = first.segments.map(\.spokenText).joined()
         let skeleton = SpokenScriptValidator().semanticSkeleton
@@ -55,19 +55,26 @@ struct SpokenScriptDirectorSelfTest {
             "逐字朗读丢失内容"
         )
 
-        let longSource = String(repeating: "这是一段需要自然停连但不能改写事实的普通话内容，", count: 8) + "到这里结束。"
+        let continuousParagraph = "第一句介绍背景。第二句继续解释原因。第三句给出一个简短结论。"
+        let continuousResult = try director.prepare(sourceText: continuousParagraph, mode: .spoken)
+        try spokenExpect(
+            continuousResult.segments.count == 1,
+            "同一自然段的多个短句应保持在同一连续语义段"
+        )
+
+        let longSource = String(repeating: "这是一段需要自然停连但不能改写事实的普通话内容，", count: 16) + "到这里结束。"
         let longResult = try director.prepare(sourceText: longSource, mode: .spoken)
         try spokenExpect(longResult.segments.count > 1, "长句没有拆成多个口语片段")
         try spokenExpect(
             longResult.segments.allSatisfy {
                 $0.spokenText.count <= SpokenScriptValidator.preferredMaximumCharacters
             },
-            "长句拆分仍超过优先上限"
+            "长句拆分仍超过连续语义段上限"
         )
         let longVerbatim = try director.prepare(sourceText: longSource, mode: .verbatim)
         try spokenExpect(
-            longResult.segments.count > longVerbatim.segments.count,
-            "自然讲解应比逐字朗读采用更短的停连片段"
+            longResult.segments.count <= longVerbatim.segments.count,
+            "自然讲解应尽量减少独立起调的片段数"
         )
 
         print("SpokenScriptDirectorSelfTest: PASS")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-shot local Qwen3-TTS runner with a JSON-lines process contract."""
+"""Local Qwen3-TTS runner with one-shot and persistent JSON-lines contracts."""
 
 from __future__ import annotations
 
@@ -22,6 +22,7 @@ MAX_TARGET_CHARACTERS = 500
 DEFAULT_FINAL_SAMPLE_RATE = 48_000
 MIN_AUTOMATIC_OUTPUT_SECONDS = 15.0
 MAX_AUTOMATIC_OUTPUT_SECONDS = 180.0
+CURRENT_REQUEST_ID: str | None = None
 
 
 class RunnerError(RuntimeError):
@@ -29,19 +30,22 @@ class RunnerError(RuntimeError):
 
 
 def emit(event: str, **payload: Any) -> None:
+    if CURRENT_REQUEST_ID is not None and "requestId" not in payload:
+        payload["requestId"] = CURRENT_REQUEST_ID
     print(
         json.dumps({"event": event, **payload}, ensure_ascii=False, separators=(",", ":")),
         flush=True,
     )
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Generate one local Mandarin WAV file")
+def build_parser(worker_mode: bool = False) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Generate local Mandarin WAV files")
+    parser.add_argument("--worker", action="store_true")
     parser.add_argument("--model-dir", required=True)
-    parser.add_argument("--reference-audio", required=True)
-    parser.add_argument("--reference-text", required=True)
-    parser.add_argument("--text", required=True)
-    parser.add_argument("--output", required=True)
+    parser.add_argument("--reference-audio", required=not worker_mode)
+    parser.add_argument("--reference-text", required=not worker_mode)
+    parser.add_argument("--text", required=not worker_mode)
+    parser.add_argument("--output", required=not worker_mode)
     parser.add_argument("--deepfilter-model")
     parser.add_argument("--deepfilter-wet", type=float, default=0.0)
     parser.add_argument("--streaming-interval", type=float, default=2.0)
@@ -193,24 +197,27 @@ def prepare_reference(arguments: argparse.Namespace, sample_rate: int):
     return mx.array(audio, dtype=mx.float32), float(audio.size / sample_rate)
 
 
-def generate_audio(arguments: argparse.Namespace) -> tuple[Any, int, dict[str, Any]]:
-    import mlx.core as mx
-    import numpy as np
+def load_qwen_model(arguments: argparse.Namespace) -> tuple[Any, float]:
     from mlx_audio.tts.utils import load_model
 
     emit("loading")
     load_started = time.monotonic()
     with contextlib.redirect_stdout(sys.stderr):
         model = load_model(str(Path(arguments.model_dir).expanduser()))
-    load_seconds = time.monotonic() - load_started
+    return model, time.monotonic() - load_started
+
+
+def generate_audio_with_model(
+    arguments: argparse.Namespace,
+    model: Any,
+    reference: Any,
+    reference_duration: float,
+    model_load_seconds: float,
+) -> tuple[Any, int, dict[str, Any]]:
+    import mlx.core as mx
+    import numpy as np
+
     sample_rate = int(model.sample_rate)
-    reference, reference_duration = prepare_reference(arguments, sample_rate)
-    emit(
-        "model_loaded",
-        seconds=load_seconds,
-        sampleRate=sample_rate,
-        referenceDuration=reference_duration,
-    )
 
     mx.clear_cache()
     mx.reset_peak_memory()
@@ -265,7 +272,7 @@ def generate_audio(arguments: argparse.Namespace) -> tuple[Any, int, dict[str, A
         raise RunnerError("Qwen output contains invalid samples")
     peak_memory_gb = float(mx.get_peak_memory() / 1e9)
     metrics = {
-        "modelLoadSeconds": load_seconds,
+        "modelLoadSeconds": model_load_seconds,
         "firstAudioSeconds": first_audio_seconds,
         "generationSeconds": generation_seconds,
         "chunkCount": len(chunks),
@@ -275,11 +282,36 @@ def generate_audio(arguments: argparse.Namespace) -> tuple[Any, int, dict[str, A
     }
 
     del results
-    del model
-    del reference
     gc.collect()
     mx.clear_cache()
     return audio, sample_rate, metrics
+
+
+def generate_audio(arguments: argparse.Namespace) -> tuple[Any, int, dict[str, Any]]:
+    import mlx.core as mx
+
+    model, load_seconds = load_qwen_model(arguments)
+    sample_rate = int(model.sample_rate)
+    reference, reference_duration = prepare_reference(arguments, sample_rate)
+    emit(
+        "model_loaded",
+        seconds=load_seconds,
+        sampleRate=sample_rate,
+        referenceDuration=reference_duration,
+    )
+    try:
+        return generate_audio_with_model(
+            arguments,
+            model,
+            reference,
+            reference_duration,
+            load_seconds,
+        )
+    finally:
+        del model
+        del reference
+        gc.collect()
+        mx.clear_cache()
 
 
 def postprocess_audio(
@@ -408,11 +440,189 @@ def run(arguments: argparse.Namespace) -> None:
     )
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = build_parser()
-    arguments = parser.parse_args(argv)
+def required_worker_string(message: dict[str, Any], key: str) -> str:
+    value = message.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise RunnerError(f"worker request requires {key}")
+    return value
+
+
+def worker_arguments(
+    base: argparse.Namespace,
+    message: dict[str, Any],
+) -> argparse.Namespace:
+    values = vars(base).copy()
+    values.update(
+        worker=False,
+        reference_audio=required_worker_string(message, "referenceAudio"),
+        reference_text=required_worker_string(message, "referenceText"),
+        text=required_worker_string(message, "text"),
+        output=required_worker_string(message, "output"),
+        seed=int(message.get("seed", base.seed)),
+        reference_start_seconds=float(
+            message.get("referenceStartSeconds", base.reference_start_seconds)
+        ),
+        reference_duration_seconds=message.get(
+            "referenceDurationSeconds", base.reference_duration_seconds
+        ),
+        reference_peak_dbfs=float(
+            message.get("referencePeakDBFS", base.reference_peak_dbfs)
+        ),
+        max_output_seconds=message.get(
+            "maxOutputSeconds", base.max_output_seconds
+        ),
+    )
+    if values["reference_duration_seconds"] is not None:
+        values["reference_duration_seconds"] = float(
+            values["reference_duration_seconds"]
+        )
+    if values["max_output_seconds"] is not None:
+        values["max_output_seconds"] = float(values["max_output_seconds"])
+    return argparse.Namespace(**values)
+
+
+def reference_cache_key(arguments: argparse.Namespace) -> tuple[Any, ...]:
+    path = Path(arguments.reference_audio).expanduser().resolve()
+    stat = path.stat()
+    return (
+        str(path),
+        stat.st_size,
+        stat.st_mtime_ns,
+        arguments.reference_text.strip(),
+        arguments.reference_start_seconds,
+        arguments.reference_duration_seconds,
+        arguments.reference_peak_dbfs,
+    )
+
+
+def emit_worker_failure(error: Exception) -> None:
+    if isinstance(error, (RunnerError, FileNotFoundError, ValueError, TypeError)):
+        detail = str(error)
+    else:
+        detail = f"local generation failed: {error}"
+    emit("failed", error=detail)
+
+
+def run_worker(arguments: argparse.Namespace) -> None:
+    global CURRENT_REQUEST_ID
+
+    model = None
+    reference = None
+    cached_reference_key: tuple[Any, ...] | None = None
+    cached_reference_duration = 0.0
+    load_seconds = 0.0
+    sample_rate = DEFAULT_FINAL_SAMPLE_RATE
+
+    if arguments.validate_only:
+        model_dir = Path(arguments.model_dir).expanduser()
+        if not model_dir.is_dir():
+            raise RunnerError(f"model directory does not exist: {model_dir}")
+        emit("worker_ready", validatedOnly=True)
+    else:
+        model, load_seconds = load_qwen_model(arguments)
+        sample_rate = int(model.sample_rate)
+        emit(
+            "worker_ready",
+            seconds=load_seconds,
+            sampleRate=sample_rate,
+            validatedOnly=False,
+        )
+
     try:
-        run(arguments)
+        for raw_line in sys.stdin:
+            line = raw_line.strip()
+            if not line:
+                continue
+            request_id: str | None = None
+            try:
+                message = json.loads(line)
+                if not isinstance(message, dict):
+                    raise RunnerError("worker request must be a JSON object")
+                raw_request_id = message.get("requestId")
+                if not isinstance(raw_request_id, str) or not raw_request_id.strip():
+                    raise RunnerError("worker request requires requestId")
+                request_id = raw_request_id.strip()
+                CURRENT_REQUEST_ID = request_id
+                command = message.get("command")
+                if command == "shutdown":
+                    emit("worker_stopped")
+                    return
+                if command != "synthesize":
+                    raise RunnerError(f"unsupported worker command: {command}")
+
+                request_arguments = worker_arguments(arguments, message)
+                validate_arguments(request_arguments)
+                if arguments.validate_only:
+                    emit("validated")
+                    continue
+
+                requested_reference_key = reference_cache_key(request_arguments)
+                if requested_reference_key != cached_reference_key:
+                    reference, cached_reference_duration = prepare_reference(
+                        request_arguments, sample_rate
+                    )
+                    cached_reference_key = requested_reference_key
+                    emit(
+                        "voice_prepared",
+                        referenceDuration=cached_reference_duration,
+                    )
+                else:
+                    emit(
+                        "voice_reused",
+                        referenceDuration=cached_reference_duration,
+                    )
+
+                audio, source_rate, generation_metrics = generate_audio_with_model(
+                    request_arguments,
+                    model,
+                    reference,
+                    cached_reference_duration,
+                    0.0,
+                )
+                final_audio, final_rate, postprocess_metrics = postprocess_audio(
+                    audio, source_rate, request_arguments
+                )
+                output_metrics = write_output(
+                    final_audio,
+                    final_rate,
+                    Path(request_arguments.output).expanduser(),
+                )
+                emit(
+                    "completed",
+                    output=output_metrics,
+                    generation=generation_metrics,
+                    postprocess=postprocess_metrics,
+                    workerModelLoadSeconds=load_seconds,
+                    processMaxRSSBytes=int(
+                        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+                    ),
+                )
+            except Exception as error:
+                CURRENT_REQUEST_ID = request_id
+                emit_worker_failure(error)
+            finally:
+                CURRENT_REQUEST_ID = None
+    finally:
+        if model is not None:
+            del model
+        if reference is not None:
+            del reference
+        gc.collect()
+        if not arguments.validate_only:
+            import mlx.core as mx
+
+            mx.clear_cache()
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    raw_arguments = list(argv) if argv is not None else sys.argv[1:]
+    parser = build_parser(worker_mode="--worker" in raw_arguments)
+    arguments = parser.parse_args(raw_arguments)
+    try:
+        if arguments.worker:
+            run_worker(arguments)
+        else:
+            run(arguments)
         return 0
     except (RunnerError, FileNotFoundError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr, flush=True)

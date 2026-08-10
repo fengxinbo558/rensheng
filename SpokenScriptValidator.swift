@@ -16,8 +16,8 @@ struct SpokenScriptValidationIssue: Error, Hashable, LocalizedError {
 }
 
 struct SpokenScriptValidator {
-    static let preferredMaximumCharacters = 55
-    static let hardMaximumCharacters = 70
+    static let preferredMaximumCharacters = 140
+    static let hardMaximumCharacters = 180
 
     func validate(
         sourceText: String,

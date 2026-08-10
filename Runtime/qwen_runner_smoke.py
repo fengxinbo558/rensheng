@@ -137,6 +137,134 @@ class QwenRunnerContractTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("maximum output duration", result.stderr.lower())
 
+    def test_persistent_worker_validates_multiple_requests(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            model = root / "model"
+            model.mkdir()
+            reference = root / "reference.wav"
+            reference.write_bytes(b"placeholder")
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(RUNNER),
+                    "--worker",
+                    "--validate-only",
+                    "--model-dir",
+                    str(model),
+                ],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            self.assertIsNotNone(process.stdin)
+            self.assertIsNotNone(process.stdout)
+            assert process.stdin is not None
+            assert process.stdout is not None
+
+            ready = json.loads(process.stdout.readline())
+            self.assertEqual(ready["event"], "worker_ready")
+            self.assertTrue(ready["validatedOnly"])
+
+            for index in range(2):
+                request_id = f"request-{index}"
+                process.stdin.write(
+                    json.dumps(
+                        {
+                            "command": "synthesize",
+                            "requestId": request_id,
+                            "referenceAudio": str(reference),
+                            "referenceText": "参考原文",
+                            "text": f"第{index + 1}段目标文字。",
+                            "output": str(root / f"result-{index}.wav"),
+                            "seed": 42 + index,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+                process.stdin.flush()
+                validated = json.loads(process.stdout.readline())
+                self.assertEqual(validated["event"], "validated")
+                self.assertEqual(validated["requestId"], request_id)
+
+            process.stdin.write(
+                json.dumps(
+                    {"command": "shutdown", "requestId": "shutdown-request"}
+                )
+                + "\n"
+            )
+            process.stdin.flush()
+            stopped = json.loads(process.stdout.readline())
+            self.assertEqual(stopped["event"], "worker_stopped")
+            self.assertEqual(stopped["requestId"], "shutdown-request")
+            self.assertEqual(process.wait(timeout=5), 0)
+            process.stdin.close()
+            process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
+
+    def test_persistent_worker_reports_request_error_and_stays_alive(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            model = root / "model"
+            model.mkdir()
+            reference = root / "reference.wav"
+            reference.write_bytes(b"placeholder")
+            process = subprocess.Popen(
+                [
+                    sys.executable,
+                    str(RUNNER),
+                    "--worker",
+                    "--validate-only",
+                    "--model-dir",
+                    str(model),
+                ],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            assert process.stdin is not None
+            assert process.stdout is not None
+            json.loads(process.stdout.readline())
+            process.stdin.write(
+                json.dumps(
+                    {
+                        "command": "synthesize",
+                        "requestId": "bad-request",
+                        "referenceAudio": str(reference),
+                        "referenceText": "参考原文",
+                        "text": "   ",
+                        "output": str(root / "invalid.wav"),
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+            process.stdin.flush()
+            failed = json.loads(process.stdout.readline())
+            self.assertEqual(failed["event"], "failed")
+            self.assertEqual(failed["requestId"], "bad-request")
+            self.assertIn("text", failed["error"].lower())
+
+            process.stdin.write(
+                json.dumps(
+                    {"command": "shutdown", "requestId": "shutdown-request"}
+                )
+                + "\n"
+            )
+            process.stdin.flush()
+            self.assertEqual(
+                json.loads(process.stdout.readline())["event"], "worker_stopped"
+            )
+            self.assertEqual(process.wait(timeout=5), 0)
+            process.stdin.close()
+            process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
+
 
 if __name__ == "__main__":
     unittest.main()

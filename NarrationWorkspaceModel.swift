@@ -188,7 +188,7 @@ final class NarrationWorkspaceModel: ObservableObject {
             if script.usedFallback {
                 status = script.warning ?? "自然整理未通过检查，已安全改为逐字朗读"
             } else {
-                status = "已整理为 \(project.segments.count) 个自然短句，可直接生成全文"
+                status = "已整理为 \(project.segments.count) 个连续语义段，可直接生成全文"
             }
             return true
         } catch {
@@ -283,8 +283,8 @@ final class NarrationWorkspaceModel: ObservableObject {
             status = "朗读文字不能为空"
             return
         }
-        guard clean.count <= 120 else {
-            status = "单个声音片段最多 120 个字；请拆成两段后再修改"
+        guard clean.count <= SpokenScriptValidator.hardMaximumCharacters else {
+            status = "单个连续语义段最多 180 个字；请拆分后再修改"
             return
         }
         guard var project = selectedProject,
@@ -304,7 +304,7 @@ final class NarrationWorkspaceModel: ObservableObject {
             finalAudioURLs = [:]
             if playback.contextID == project.id { playback.stopAndUnload() }
             reloadProjects(selecting: project.id)
-            status = "第 \(project.segments[index].order + 1) 段文字已更新，只需重做这一段"
+            status = "第 \(project.segments[index].order + 1) 个连续语义段已更新，只需重做这一段"
         } catch {
             status = "朗读文字保存失败：\(error.localizedDescription)"
         }
@@ -329,7 +329,7 @@ final class NarrationWorkspaceModel: ObservableObject {
             finalAudioURLs = [:]
             if playback.contextID == project.id { playback.stopAndUnload() }
             reloadProjects(selecting: project.id)
-            status = "第 \(project.segments[index].order + 1) 段已恢复原文，只需重做这一段"
+            status = "第 \(project.segments[index].order + 1) 个连续语义段已恢复原文，只需重做这一段"
         } catch {
             status = "恢复原文失败：\(error.localizedDescription)"
         }

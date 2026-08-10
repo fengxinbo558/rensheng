@@ -70,7 +70,7 @@ struct SegmentEditorRow: View {
                         .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
                         .accessibilityLabel("第 \(segment.order + 1) 段实际朗读文字")
                     HStack {
-                        Text("可以修正读法；修改只会重做这一段")
+                        Text("可以修正读法；修改只会重做这一连续语义段")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -130,7 +130,7 @@ struct SegmentEditorRow: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    Button("重新生成这一段") { onRegenerate() }
+                    Button("重新生成这一语义段") { onRegenerate() }
                         .disabled(isBusy)
                     Spacer()
                 }

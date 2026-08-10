@@ -54,7 +54,7 @@ struct NarrationDirectorSelfTest {
                 spokenCharacters(first.map(\.text).joined()) == spokenCharacters(fixture.text),
                 "分析不能改写用户原文"
             )
-            try directorExpect(first.allSatisfy { $0.text.count <= 120 }, "单段不得超过 120 字")
+            try directorExpect(first.allSatisfy { $0.text.count <= 180 }, "单段不得超过 180 字")
         }
 
         let defaults = try director.analyze(
@@ -72,7 +72,7 @@ struct NarrationDirectorSelfTest {
         let longText = String(repeating: "这是一段需要被安全拆分的普通话知识内容，", count: 16) + "到这里结束。"
         let longSegments = try director.analyze(text: longText, voiceID: "voice-test")
         try directorExpect(longSegments.count > 1, "长段落应自动拆分")
-        try directorExpect(longSegments.allSatisfy { $0.text.count <= 120 }, "长段落拆分后仍超限")
+        try directorExpect(longSegments.allSatisfy { $0.text.count <= 180 }, "长段落拆分后仍超限")
         try directorExpect(
             spokenCharacters(longSegments.map(\.text).joined()) == spokenCharacters(longText),
             "拆分长段落不能丢字"
