@@ -92,6 +92,70 @@ struct SpeechEngineConfigurationSelfTest {
         try expect(portable.model.standardizedFileURL == bundledModel.standardizedFileURL, "便携版不得使用包外自然人声模型")
         try expect(portable.deepFilterModel.standardizedFileURL == bundledDeepFilter.standardizedFileURL, "便携版不得使用包外人声整理模型")
 
+        let expressiveExecutable = root.appendingPathComponent("override/emotion-cosy-probe")
+        let expressiveMetallib = root.appendingPathComponent("override/mlx.metallib")
+        let expressiveModel = root.appendingPathComponent("override/cosy-model", isDirectory: true)
+        let expressiveSpeaker = root.appendingPathComponent("override/campp", isDirectory: true)
+        try createFile(expressiveExecutable, executable: true)
+        try createFile(expressiveMetallib)
+        for file in [
+            "config.json", "llm.safetensors", "flow.safetensors",
+            "hifigan.safetensors", "speech_tokenizer.safetensors",
+        ] {
+            try createFile(expressiveModel.appendingPathComponent(file))
+        }
+        try createFile(
+            expressiveSpeaker
+                .appendingPathComponent("CamPlusPlus.mlmodelc")
+                .appendingPathComponent("model.mil")
+        )
+        let expressiveOverrides = [
+            "LOCAL_AUDIO_EXPRESSIVE_EXECUTABLE": expressiveExecutable.path,
+            "LOCAL_AUDIO_EXPRESSIVE_METALLIB": expressiveMetallib.path,
+            "LOCAL_AUDIO_EXPRESSIVE_MODEL": expressiveModel.path,
+            "LOCAL_AUDIO_EXPRESSIVE_SPEAKER_MODEL": expressiveSpeaker.path,
+        ]
+        let expressive = RuntimeLocator.locateExpressiveResources(
+            environment: expressiveOverrides,
+            resourceURL: nil,
+            sourceDirectory: root
+        )
+        try expect(expressive.isAvailable, "环境变量指定的情绪人声资源应当可用")
+
+        let bundledExpressiveExecutable = portableResources
+            .appendingPathComponent("EmotionRuntime/bin/emotion-cosy-probe")
+        let bundledExpressiveMetallib = portableResources
+            .appendingPathComponent("EmotionRuntime/bin/mlx.metallib")
+        let bundledExpressiveModel = portableResources
+            .appendingPathComponent("Models/CosyVoice3", isDirectory: true)
+        let bundledExpressiveSpeaker = portableResources
+            .appendingPathComponent("Models/CamPlusPlus", isDirectory: true)
+        try createFile(bundledExpressiveExecutable, executable: true)
+        try createFile(bundledExpressiveMetallib)
+        for file in [
+            "config.json", "llm.safetensors", "flow.safetensors",
+            "hifigan.safetensors", "speech_tokenizer.safetensors",
+        ] {
+            try createFile(bundledExpressiveModel.appendingPathComponent(file))
+        }
+        try createFile(
+            bundledExpressiveSpeaker
+                .appendingPathComponent("CamPlusPlus.mlmodelc")
+                .appendingPathComponent("model.mil")
+        )
+        let portableExpressive = RuntimeLocator.locateExpressiveResources(
+            environment: expressiveOverrides,
+            resourceURL: portableResources,
+            sourceDirectory: root,
+            portableMode: true
+        )
+        try expect(portableExpressive.isAvailable, "便携包内情绪资源应当可用")
+        try expect(
+            portableExpressive.executable.standardizedFileURL
+                == bundledExpressiveExecutable.standardizedFileURL,
+            "便携版不得使用包外情绪运行程序"
+        )
+
         try expect(
             SpeechEngineProgress.generating(completedChunks: 3).statusLabel.contains("3 个片段"),
             "生成进度应显示已完成的片段数"

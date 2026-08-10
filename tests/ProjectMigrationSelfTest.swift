@@ -89,6 +89,10 @@ struct ProjectMigrationSelfTest {
         )
         try migrationExpect(migrated.segments.count == 2, "旧段落没有保留")
         try migrationExpect(migrated.segments[0].expression == .natural, "旧段落应补默认表达方式")
+        try migrationExpect(
+            migrated.segments[0].expressionIntensity == .subtle,
+            "旧段落应补轻微情绪强度"
+        )
         try migrationExpect(migrated.segments[0].speedFactor == 0.9, "旧段落速度应迁移为0.9倍")
         try migrationExpect(migrated.segments[0].pause == .normal, "旧段落应补默认停顿")
         try migrationExpect(migrated.segments[0].generationState == .pending, "遗留生成状态应恢复为等待")

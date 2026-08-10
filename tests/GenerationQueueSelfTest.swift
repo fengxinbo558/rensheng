@@ -25,6 +25,8 @@ private final class FakeSpeechEngine: SpeechEngine, @unchecked Sendable {
     let unavailableReason: String? = nil
     var calls: [String] = []
     var seeds: [Int] = []
+    var expressions: [NarrationExpression] = []
+    var intensities: [ExpressionIntensity] = []
     var failuresRemaining: [String: Int] = [:]
     var onSynthesize: (() -> Void)?
     private(set) var wasCancelled = false
@@ -35,6 +37,8 @@ private final class FakeSpeechEngine: SpeechEngine, @unchecked Sendable {
     ) throws -> SpeechSynthesisResult {
         calls.append(request.text)
         seeds.append(request.seed)
+        expressions.append(request.expression)
+        intensities.append(request.expressionIntensity)
         onSynthesize?()
         if wasCancelled { throw SpeechEngineError.cancelled }
         if let remaining = failuresRemaining[request.text], remaining > 0 {
@@ -117,12 +121,14 @@ struct GenerationQueueSelfTest {
         try queueExpect(engine.calls.count == callsBeforeCache, "缓存命中不应再次生成")
 
         var oneChanged = try store.loadProject(id: project.id)
-        oneChanged.segments[1].expression = .emphasized
+        oneChanged.segments[1].expression = .happy
         oneChanged.refreshSegmentFingerprints(invalidateChanged: true)
         try store.save(oneChanged)
         _ = try queue.run(projectID: project.id, voice: voice)
         try queueExpect(engine.calls.last == "第二段。", "只应重新生成修改过的段落")
         try queueExpect(engine.calls.count == callsBeforeCache + 1, "未修改段落不应重做")
+        try queueExpect(engine.expressions.last == .happy, "表达设置没有传给语音引擎")
+        try queueExpect(engine.intensities.last == .subtle, "默认情绪强度应为轻微")
 
         var targetedProject = try store.loadProject(id: project.id)
         let targetedID = targetedProject.segments[0].id

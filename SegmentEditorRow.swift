@@ -4,6 +4,8 @@ struct SegmentEditorRow: View {
     let segment: NarrationSegment
     let isBusy: Bool
     let onTextSave: (String) -> Void
+    let onExpression: (NarrationExpression) -> Void
+    let onExpressionIntensity: (ExpressionIntensity) -> Void
     let onSpeed: (Double) -> Void
     let onPause: (NarrationPause) -> Void
     let onCandidate: (String) -> Void
@@ -17,6 +19,8 @@ struct SegmentEditorRow: View {
         segment: NarrationSegment,
         isBusy: Bool,
         onTextSave: @escaping (String) -> Void,
+        onExpression: @escaping (NarrationExpression) -> Void,
+        onExpressionIntensity: @escaping (ExpressionIntensity) -> Void,
         onSpeed: @escaping (Double) -> Void,
         onPause: @escaping (NarrationPause) -> Void,
         onCandidate: @escaping (String) -> Void,
@@ -26,6 +30,8 @@ struct SegmentEditorRow: View {
         self.segment = segment
         self.isBusy = isBusy
         self.onTextSave = onTextSave
+        self.onExpression = onExpression
+        self.onExpressionIntensity = onExpressionIntensity
         self.onSpeed = onSpeed
         self.onPause = onPause
         self.onCandidate = onCandidate
@@ -62,10 +68,49 @@ struct SegmentEditorRow: View {
                     }
                 }
 
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        Picker(
+                            "表达情绪",
+                            selection: Binding(
+                                get: { segment.expression.currentValue },
+                                set: onExpression
+                            )
+                        ) {
+                            ForEach(NarrationExpression.userSelectableCases) { item in
+                                Text(item.label).tag(item)
+                            }
+                        }
+                        .disabled(isBusy)
+
+                        if segment.expression.supportsIntensity {
+                            Picker(
+                                "情绪强度",
+                                selection: Binding(
+                                    get: { segment.expressionIntensity },
+                                    set: onExpressionIntensity
+                                )
+                            ) {
+                                ForEach(ExpressionIntensity.allCases) { item in
+                                    Text(item.label).tag(item)
+                                }
+                            }
+                            .disabled(isBusy)
+                        }
+                        Spacer()
+                    }
+                    .controlSize(.small)
+
+                    Text(
+                        segment.expression.supportsIntensity
+                            ? "默认使用轻微情绪；只有需要时才提高强度。修改后只重做这一段。"
+                            : "自然表达会贴近录音语气，不额外表演。"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                }
+
                 HStack(spacing: 14) {
-                    Label("自动表达：\(segment.expression.label)", systemImage: "wand.and.stars")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                     Stepper(
                         value: Binding(get: { segment.speedFactor }, set: onSpeed),
                         in: NarrationSegment.minimumSpeedFactor...NarrationSegment.maximumSpeedFactor,

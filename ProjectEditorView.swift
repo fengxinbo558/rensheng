@@ -230,6 +230,10 @@ struct ProjectEditorView: View {
                         segment: segment,
                         isBusy: model.isGenerating || model.isFinishing,
                         onTextSave: { model.updateSegmentText(id: segment.id, text: $0) },
+                        onExpression: { model.updateSegment(id: segment.id, expression: $0) },
+                        onExpressionIntensity: {
+                            model.updateSegment(id: segment.id, expressionIntensity: $0)
+                        },
                         onSpeed: { model.updateSegment(id: segment.id, speedFactor: $0) },
                         onPause: { model.updateSegment(id: segment.id, pause: $0) },
                         onCandidate: { model.selectCandidate(segmentID: segment.id, candidateID: $0) },

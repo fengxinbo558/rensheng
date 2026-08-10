@@ -26,6 +26,11 @@ enum NarrationSegmentKind: String, Codable, CaseIterable, Identifiable {
 
 enum NarrationExpression: String, Codable, CaseIterable, Identifiable {
     case natural
+    case happy
+    case excited
+    case sad
+    case angry
+    // 旧项目兼容值；读取时会迁移到自然表达。
     case friendly
     case steady
     case emphasized
@@ -35,9 +40,42 @@ enum NarrationExpression: String, Codable, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .natural: return "自然"
+        case .happy: return "开心"
+        case .excited: return "兴奋"
+        case .sad: return "悲伤"
+        case .angry: return "愤怒"
         case .friendly: return "亲切"
         case .steady: return "沉稳"
         case .emphasized: return "强调"
+        }
+    }
+
+    static let userSelectableCases: [NarrationExpression] = [
+        .natural, .happy, .excited, .sad, .angry,
+    ]
+
+    var currentValue: NarrationExpression {
+        switch self {
+        case .friendly, .steady, .emphasized: return .natural
+        default: return self
+        }
+    }
+
+    var supportsIntensity: Bool { currentValue != .natural }
+}
+
+enum ExpressionIntensity: String, Codable, CaseIterable, Identifiable {
+    case subtle
+    case clear
+    case strong
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .subtle: return "轻微"
+        case .clear: return "自然清楚"
+        case .strong: return "较强"
         }
     }
 }
@@ -111,6 +149,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
     var text: String
     var kind: NarrationSegmentKind
     var expression: NarrationExpression
+    var expressionIntensity: ExpressionIntensity
     var speedFactor: Double
     var pause: NarrationPause
     var inputFingerprint: String
@@ -126,6 +165,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         text: String,
         kind: NarrationSegmentKind,
         expression: NarrationExpression = .natural,
+        expressionIntensity: ExpressionIntensity = .subtle,
         speedFactor: Double = 1.0,
         pause: NarrationPause = .normal,
         voiceID: String
@@ -134,7 +174,8 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         self.order = order
         self.text = text
         self.kind = kind
-        self.expression = expression
+        self.expression = expression.currentValue
+        self.expressionIntensity = expressionIntensity
         self.speedFactor = Self.normalizedSpeedFactor(speedFactor)
         self.pause = pause
         inputFingerprint = ""
@@ -151,6 +192,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
             text: text,
             kind: kind,
             expression: expression,
+            expressionIntensity: expressionIntensity,
             voiceID: voiceID
         )
         let changed = !inputFingerprint.isEmpty && inputFingerprint != refreshed
@@ -170,12 +212,14 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         text: String,
         kind: NarrationSegmentKind,
         expression: NarrationExpression,
+        expressionIntensity: ExpressionIntensity,
         voiceID: String
     ) -> String {
         let value = [
             text,
             kind.rawValue,
             expression.rawValue,
+            expressionIntensity.rawValue,
             voiceID,
         ].joined(separator: "\u{1f}")
         var hash: UInt64 = 14_695_981_039_346_656_037
@@ -187,7 +231,8 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, order, text, kind, expression, speedFactor, speed, pause, inputFingerprint
+        case id, order, text, kind, expression, expressionIntensity, speedFactor, speed, pause
+        case inputFingerprint
         case generationState, generationAttempts, candidates, selectedCandidateID, errorSummary
     }
 
@@ -198,8 +243,12 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
         kind = try container.decodeIfPresent(NarrationSegmentKind.self, forKey: .kind)
             ?? .explanation
-        expression = try container.decodeIfPresent(NarrationExpression.self, forKey: .expression)
-            ?? .natural
+        expression = try container.decodeIfPresent(NarrationExpression.self, forKey: .expression)?
+            .currentValue ?? .natural
+        expressionIntensity = try container.decodeIfPresent(
+            ExpressionIntensity.self,
+            forKey: .expressionIntensity
+        ) ?? .subtle
         if let storedFactor = try container.decodeIfPresent(Double.self, forKey: .speedFactor) {
             speedFactor = Self.normalizedSpeedFactor(storedFactor)
         } else {
@@ -231,6 +280,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         try container.encode(text, forKey: .text)
         try container.encode(kind, forKey: .kind)
         try container.encode(expression, forKey: .expression)
+        try container.encode(expressionIntensity, forKey: .expressionIntensity)
         try container.encode(Self.normalizedSpeedFactor(speedFactor), forKey: .speedFactor)
         try container.encode(pause, forKey: .pause)
         try container.encode(inputFingerprint, forKey: .inputFingerprint)

@@ -20,19 +20,25 @@ struct SpeechSynthesisRequest {
     let outputURL: URL
     let zipVoiceSteps: Int
     let seed: Int
+    let expression: NarrationExpression
+    let expressionIntensity: ExpressionIntensity
 
     init(
         text: String,
         voice: VoiceProfile,
         outputURL: URL,
         zipVoiceSteps: Int,
-        seed: Int = 42
+        seed: Int = 42,
+        expression: NarrationExpression = .natural,
+        expressionIntensity: ExpressionIntensity = .subtle
     ) {
         self.text = text
         self.voice = voice
         self.outputURL = outputURL
         self.zipVoiceSteps = zipVoiceSteps
         self.seed = seed
+        self.expression = expression.currentValue
+        self.expressionIntensity = expressionIntensity
     }
 }
 

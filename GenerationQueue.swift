@@ -126,7 +126,9 @@ final class GenerationQueue: @unchecked Sendable {
                             voice: voice,
                             outputURL: output,
                             zipVoiceSteps: 8,
-                            seed: generationSeed
+                            seed: generationSeed,
+                            expression: project.segments[index].expression,
+                            expressionIntensity: project.segments[index].expressionIntensity
                         )
                     ) { _ in }
                     if isCancellationRequested {

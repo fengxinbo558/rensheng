@@ -20,7 +20,7 @@ struct NarrationExportRecord: Identifiable, Codable, Hashable {
 }
 
 struct NarrationProject: Identifiable, Codable, Hashable {
-    static let currentFormatVersion = 2
+    static let currentFormatVersion = 3
     static let maximumCharacterCount = 3_000
 
     var formatVersion: Int
@@ -73,7 +73,7 @@ struct NarrationProject: Identifiable, Codable, Hashable {
                 migrated.segments[index].candidates = []
                 migrated.segments[index].selectedCandidateID = nil
             }
-            if previousVersion < 2 {
+            if previousVersion < 3 {
                 migrated.segments[index].refreshFingerprint(
                     voiceID: migrated.voiceID,
                     invalidateChanged: false

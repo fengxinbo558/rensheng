@@ -41,13 +41,13 @@ enum NarrationRules {
     static func defaults(for kind: NarrationSegmentKind) -> NarrationDefaults {
         switch kind {
         case .title, .conclusion:
-            return NarrationDefaults(expression: .emphasized, speedFactor: 0.9, pause: .long)
+            return NarrationDefaults(expression: .natural, speedFactor: 0.9, pause: .long)
         case .definition:
-            return NarrationDefaults(expression: .steady, speedFactor: 0.9, pause: .normal)
+            return NarrationDefaults(expression: .natural, speedFactor: 0.9, pause: .normal)
         case .example:
-            return NarrationDefaults(expression: .friendly, speedFactor: 1.0, pause: .normal)
+            return NarrationDefaults(expression: .natural, speedFactor: 1.0, pause: .normal)
         case .question:
-            return NarrationDefaults(expression: .friendly, speedFactor: 1.0, pause: .short)
+            return NarrationDefaults(expression: .natural, speedFactor: 1.0, pause: .short)
         case .transition:
             return NarrationDefaults(expression: .natural, speedFactor: 1.0, pause: .normal)
         case .explanation:

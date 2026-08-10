@@ -61,13 +61,13 @@ struct NarrationDirectorSelfTest {
             text: "知识标题\n\n所谓缓存，是指暂时保存常用数据。\n\n例如，浏览器会缓存图片。\n\n这样做有什么好处？\n\n因此，它可以减少重复下载。",
             voiceID: "voice-test"
         )
-        try directorExpect(defaults[0].expression == .emphasized, "标题应默认强调")
+        try directorExpect(defaults[0].expression == .natural, "标题默认不应刻意表演")
         try directorExpect(defaults[0].speedFactor == 0.9, "标题应默认0.9倍")
         try directorExpect(defaults[0].pause == .long, "标题后应长停顿")
-        try directorExpect(defaults[1].expression == .steady, "定义应默认沉稳")
-        try directorExpect(defaults[2].expression == .friendly, "举例应默认亲切")
+        try directorExpect(defaults[1].expression == .natural, "定义默认应自然表达")
+        try directorExpect(defaults[2].expression == .natural, "举例默认应自然表达")
         try directorExpect(defaults[3].pause == .short, "疑问后应短停顿")
-        try directorExpect(defaults[4].expression == .emphasized, "结论应默认强调")
+        try directorExpect(defaults[4].expression == .natural, "结论默认不应刻意强调")
 
         let longText = String(repeating: "这是一段需要被安全拆分的普通话知识内容，", count: 16) + "到这里结束。"
         let longSegments = try director.analyze(text: longText, voiceID: "voice-test")

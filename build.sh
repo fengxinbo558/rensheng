@@ -35,7 +35,8 @@ for required_path in \
   "${REFERENCE_SOURCE}" \
   "${MP3_ENCODER_SOURCE}/lame" \
   "${MP3_ENCODER_SOURCE}/COPYING" \
-  "${MP3_ENCODER_SOURCE}/lame-3.100.tar.gz"; do
+  "${MP3_ENCODER_SOURCE}/lame-3.100.tar.gz" \
+  "${SCRIPT_DIR}/package-emotion-runtime.sh"; do
   if [[ ! -e "${required_path}" ]]; then
     print -u2 -- "缺少应用资源：${required_path}"
     exit 1
@@ -69,6 +70,7 @@ if [[ "${BUILD_FLAVOR}" == "portable" ]]; then
   /usr/bin/ditto --norsrc \
     "${WORKSPACE_ROOT}/spike/models/experimental/deepfilternet-mlx/v3" \
     "${RESOURCES_PATH}/Models/DeepFilterNet/v3"
+  "${SCRIPT_DIR}/package-emotion-runtime.sh" "${RESOURCES_PATH}"
 fi
 
 SWIFT_SOURCES=("${SCRIPT_DIR}"/*.swift)

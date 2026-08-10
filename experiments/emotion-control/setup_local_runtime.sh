@@ -41,6 +41,14 @@ GIT_CONFIG_GLOBAL=/dev/null /usr/bin/swift build \
   --scratch-path "${RUNTIME_ROOT}/swift-probe-build" \
   --cache-path "${RUNTIME_ROOT}/swiftpm-cache" \
   --configuration release \
+  -Xswiftc -file-prefix-map \
+  -Xswiftc "${PROJECT_ROOT}=." \
+  -Xswiftc -debug-prefix-map \
+  -Xswiftc "${PROJECT_ROOT}=." \
+  -Xcc "-ffile-prefix-map=${PROJECT_ROOT}=." \
+  -Xcc "-fdebug-prefix-map=${PROJECT_ROOT}=." \
+  -Xcxx "-ffile-prefix-map=${PROJECT_ROOT}=." \
+  -Xcxx "-fdebug-prefix-map=${PROJECT_ROOT}=." \
   --product emotion-cosy-probe
 
 # CommandLineTools alone do not include Apple's Metal compiler. Reuse the

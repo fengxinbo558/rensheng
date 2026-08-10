@@ -200,12 +200,16 @@ final class NarrationWorkspaceModel: ObservableObject {
     func updateSegment(
         id: String,
         expression: NarrationExpression? = nil,
+        expressionIntensity: ExpressionIntensity? = nil,
         speedFactor: Double? = nil,
         pause: NarrationPause? = nil
     ) {
         guard var project = selectedProject,
               let index = project.segments.firstIndex(where: { $0.id == id }) else { return }
-        if let expression { project.segments[index].expression = expression }
+        if let expression { project.segments[index].expression = expression.currentValue }
+        if let expressionIntensity {
+            project.segments[index].expressionIntensity = expressionIntensity
+        }
         if let speedFactor {
             project.segments[index].speedFactor = NarrationSegment.normalizedSpeedFactor(speedFactor)
         }
@@ -222,7 +226,7 @@ final class NarrationWorkspaceModel: ObservableObject {
             finalAudioURLs = [:]
             if playback.contextID == project.id { playback.stopAndUnload() }
             reloadProjects(selecting: project.id)
-            if expression == nil {
+            if expression == nil && expressionIntensity == nil {
                 status = "第 \(project.segments[index].order + 1) 段成品设置已更新；母版保留，无需重新生成"
             } else {
                 status = "第 \(project.segments[index].order + 1) 段表达已更新，需要重新生成"
@@ -344,12 +348,18 @@ final class NarrationWorkspaceModel: ObservableObject {
         automaticallyFinish: Bool
     ) {
         guard canGenerate, let projectID = selectedProject?.id else { return }
-        let engineChoice = DeviceSynthesisPolicy.recommendedEngine(
-            naturalResourcesAvailable: RuntimeLocator.qwen.isAvailable
-        )
-        let engine: SpeechEngine = engineChoice == .natural
-            ? QwenSpeechEngine()
-            : ZipVoiceSpeechEngine()
+        let expressiveEngine = LocalExpressiveSpeechEngine()
+        let engine: SpeechEngine
+        if expressiveEngine.isAvailable {
+            engine = expressiveEngine
+        } else {
+            let engineChoice = DeviceSynthesisPolicy.recommendedEngine(
+                naturalResourcesAvailable: RuntimeLocator.qwen.isAvailable
+            )
+            engine = engineChoice == .natural
+                ? QwenSpeechEngine()
+                : ZipVoiceSpeechEngine()
+        }
         let queue = GenerationQueue(store: store, engine: engine)
         activeQueue = queue
         isGenerating = true
@@ -357,7 +367,7 @@ final class NarrationWorkspaceModel: ObservableObject {
             completed: onlySegmentID == nil ? completedSegmentCount : 0,
             total: onlySegmentID == nil ? (selectedProject?.segments.count ?? 0) : 1,
             currentSegment: onlySegmentID == nil ? max(1, completedSegmentCount + 1) : 1,
-            status: "正在准备本地自然人声"
+            status: "正在准备\(engine.displayName)"
         )
         status = onlySegmentID == nil
             ? "开始逐段生成；已经完成的段落会自动保留"

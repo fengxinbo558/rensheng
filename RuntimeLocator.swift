@@ -30,6 +30,42 @@ struct QwenRuntimeResources: Equatable {
     }
 }
 
+struct ExpressiveRuntimeResources: Equatable {
+    let executable: URL
+    let metallib: URL
+    let model: URL
+    let speakerModel: URL
+
+    var missingComponents: [String] {
+        var missing: [String] = []
+        if !FileManager.default.isExecutableFile(atPath: executable.path) {
+            missing.append("本地情绪人声运行程序")
+        }
+        if !FileManager.default.isReadableFile(atPath: metallib.path) {
+            missing.append("本地情绪人声计算资源")
+        }
+        for file in [
+            "config.json", "llm.safetensors", "flow.safetensors",
+            "hifigan.safetensors", "speech_tokenizer.safetensors",
+        ] where !FileManager.default.isReadableFile(
+            atPath: model.appendingPathComponent(file).path
+        ) {
+            missing.append("本地情绪人声模型")
+            break
+        }
+        if !FileManager.default.isReadableFile(
+            atPath: speakerModel
+                .appendingPathComponent("CamPlusPlus.mlmodelc")
+                .appendingPathComponent("model.mil").path
+        ) {
+            missing.append("个人音色识别模型")
+        }
+        return missing
+    }
+
+    var isAvailable: Bool { missingComponents.isEmpty }
+}
+
 enum RuntimeLocator {
 #if PORTABLE_RUNTIME
     private static let compiledSourceDirectory = URL(fileURLWithPath: "/", isDirectory: true)
@@ -40,6 +76,62 @@ enum RuntimeLocator {
 
     static var qwen: QwenRuntimeResources {
         locateQwenResources()
+    }
+
+    static var expressive: ExpressiveRuntimeResources {
+        locateExpressiveResources()
+    }
+
+    static func locateExpressiveResources(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        resourceURL: URL? = Bundle.main.resourceURL,
+        sourceDirectory: URL = compiledSourceDirectory,
+        portableMode: Bool = Bundle.main.object(forInfoDictionaryKey: "LocalAudioPortableRuntime") as? Bool
+            ?? false
+    ) -> ExpressiveRuntimeResources {
+        let bundledBin = resourceURL?.appendingPathComponent("EmotionRuntime/bin")
+        let bundledModel = resourceURL?.appendingPathComponent("Models/CosyVoice3")
+        let bundledSpeaker = resourceURL?.appendingPathComponent("Models/CamPlusPlus")
+        let developerRuntime = sourceDirectory.appendingPathComponent(
+            ".emotion-runtime/swift-probe-build/release"
+        )
+        let developerModels = sourceDirectory.appendingPathComponent(".emotion-models")
+
+        let executable = locate(
+            environmentKey: "LOCAL_AUDIO_EXPRESSIVE_EXECUTABLE",
+            environment: environment,
+            bundled: bundledBin?.appendingPathComponent("emotion-cosy-probe"),
+            developer: developerRuntime.appendingPathComponent("emotion-cosy-probe"),
+            portableMode: portableMode
+        )
+        return ExpressiveRuntimeResources(
+            executable: executable,
+            metallib: locate(
+                environmentKey: "LOCAL_AUDIO_EXPRESSIVE_METALLIB",
+                environment: environment,
+                bundled: bundledBin?.appendingPathComponent("mlx.metallib"),
+                developer: developerRuntime.appendingPathComponent("mlx.metallib"),
+                portableMode: portableMode
+            ),
+            model: locate(
+                environmentKey: "LOCAL_AUDIO_EXPRESSIVE_MODEL",
+                environment: environment,
+                bundled: bundledModel,
+                developer: developerModels.appendingPathComponent(
+                    "CosyVoice3-0.5B-MLX-8bit-full"
+                ),
+                portableMode: portableMode
+            ),
+            speakerModel: locate(
+                environmentKey: "LOCAL_AUDIO_EXPRESSIVE_SPEAKER_MODEL",
+                environment: environment,
+                bundled: bundledSpeaker,
+                developer: developerModels.appendingPathComponent(
+                    "CamPlusPlus-Speaker-CoreML"
+                ),
+                portableMode: portableMode
+            )
+        )
     }
 
     static func locateQwenResources(
