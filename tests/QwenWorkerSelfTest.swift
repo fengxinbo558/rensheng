@@ -58,6 +58,14 @@ parser.add_argument("--voice-conditioning", choices=["speaker_embedding", "icl"]
 args = parser.parse_args()
 model = Path(args.model_dir)
 (model / "conditioning.txt").write_text(args.voice_conditioning or "missing", encoding="utf-8")
+(model / "runtime-policy.txt").write_text(
+    json.dumps({
+        "dontWriteBytecode": sys.dont_write_bytecode,
+        "noUserSite": os.environ.get("PYTHONNOUSERSITE"),
+        "offline": os.environ.get("HF_HUB_OFFLINE"),
+    }),
+    encoding="utf-8",
+)
 with (model / "starts.txt").open("a", encoding="utf-8") as handle:
     handle.write(f"{os.getpid()}\n")
 print(json.dumps({"event": "worker_ready", "sampleRate": 24000}), flush=True)
@@ -132,6 +140,24 @@ for line in sys.stdin:
         try workerExpect(
             conditioning == "speaker_embedding",
             "自然人声应使用不会复读参考尾音的音色嵌入模式"
+        )
+        let runtimePolicyData = try Data(
+            contentsOf: model.appendingPathComponent("runtime-policy.txt")
+        )
+        let runtimePolicy = try JSONSerialization.jsonObject(
+            with: runtimePolicyData
+        ) as? [String: Any]
+        try workerExpect(
+            runtimePolicy?["dontWriteBytecode"] as? Bool == true,
+            "内置 Python 必须禁止向已签名的应用包写入字节码缓存"
+        )
+        try workerExpect(
+            runtimePolicy?["noUserSite"] as? String == "1",
+            "内置 Python 不应读取用户全局安装的依赖"
+        )
+        try workerExpect(
+            runtimePolicy?["offline"] as? String == "1",
+            "本地生成 Worker 必须保持离线模式"
         )
         let requests = try String(
             contentsOf: model.appendingPathComponent("requests.txt"),

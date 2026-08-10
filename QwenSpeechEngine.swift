@@ -213,6 +213,7 @@ private final class QwenWorkerConnection: @unchecked Sendable {
         let process = Process()
         process.executableURL = resources.python
         process.arguments = [
+            "-B",
             resources.runner.path,
             "--worker",
             "--model-dir", resources.model.path,
