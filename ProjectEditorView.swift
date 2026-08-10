@@ -184,9 +184,13 @@ struct ProjectEditorView: View {
 
             ProjectPlayerBar(
                 hasFinalAudio: !model.finalAudioURLs.isEmpty,
+                availableSegmentCount: model.availableSegmentCount,
+                isPreparingPreview: model.isPreparingPreview,
+                savedPosition: project.playbackPositionSeconds,
                 playback: model.playback,
                 contextID: project.id,
-                onPlay: { model.playFinal() },
+                onPlay: { model.playBestAvailableAudio() },
+                onPlayFromBeginning: { model.playFromBeginning() },
                 onReveal: { model.revealFinal() }
             )
         }

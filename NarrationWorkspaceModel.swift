@@ -11,10 +11,12 @@ final class NarrationWorkspaceModel: ObservableObject {
     @Published private(set) var status = "新建一个朗读项目，粘贴文章后开始分析"
     @Published private(set) var isGenerating = false
     @Published private(set) var isFinishing = false
+    @Published private(set) var isPreparingPreview = false
     @Published private(set) var queueProgress: GenerationQueueProgress?
     @Published private(set) var finalAudioURLs: [AudioExportFormat: URL] = [:]
 
     private let store: ProjectStore
+    private let availableAudioBuilder: AvailableAudioBuilder
     private let director = NarrationDirector()
     private let spokenScriptDirector: any SpokenScriptDirecting
     let playback: PlaybackController
@@ -26,8 +28,12 @@ final class NarrationWorkspaceModel: ObservableObject {
         playback: PlaybackController
     ) {
         self.store = store
+        self.availableAudioBuilder = AvailableAudioBuilder(store: store)
         self.spokenScriptDirector = spokenScriptDirector
         self.playback = playback
+        playback.onProgressChanged = { [weak self] snapshot in
+            self?.persistPlaybackProgress(snapshot)
+        }
         reloadProjects()
         if let mostRecentProject = projects.first {
             selectProject(mostRecentProject)
@@ -68,6 +74,11 @@ final class NarrationWorkspaceModel: ObservableObject {
     var allSegmentsCompleted: Bool {
         guard let selectedProject, !selectedProject.segments.isEmpty else { return false }
         return selectedProject.segments.allSatisfy { $0.generationState == .completed }
+    }
+
+    var availableSegmentCount: Int {
+        guard let selectedProject else { return 0 }
+        return availableAudioBuilder.availableSegmentCount(in: selectedProject)
     }
 
     var commonSpeedFactor: Double {
@@ -510,7 +521,7 @@ final class NarrationWorkspaceModel: ObservableObject {
                 try exporter.export(wav: master, to: m4a, format: .m4a)
                 try exporter.export(wav: master, to: mp3, format: .mp3)
 
-                var updated = project
+                var updated = try store.loadProject(id: projectID)
                 updated.exports = [
                     NarrationExportRecord(format: "wav", relativePath: "final/朗读成品.wav"),
                     NarrationExportRecord(format: "m4a", relativePath: "final/朗读成品.m4a"),
@@ -559,10 +570,78 @@ final class NarrationWorkspaceModel: ObservableObject {
         guard let url = finalAudioURLs[format] ?? finalAudioURLs[.wav] else { return }
         guard let project = selectedProject else { return }
         do {
-            try playback.play(url: url, title: "朗读成品", contextID: project.id)
+            try playback.play(
+                url: url,
+                title: "朗读成品",
+                contextID: project.id,
+                initialPosition: project.playbackPositionSeconds,
+                tracksProgress: true
+            )
             status = "正在播放朗读成品"
         } catch {
             status = "播放失败：\(error.localizedDescription)"
+        }
+    }
+
+    func playBestAvailableAudio() {
+        if !finalAudioURLs.isEmpty {
+            playFinal()
+        } else {
+            playAvailableAudio()
+        }
+    }
+
+    func playAvailableAudio() {
+        guard !isPreparingPreview,
+              finalAudioURLs.isEmpty,
+              let project = selectedProject,
+              availableAudioBuilder.availableSegmentCount(in: project) > 0 else { return }
+        isPreparingPreview = true
+        status = "正在准备已经完成的部分…"
+        let builder = availableAudioBuilder
+        let owner = self
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let preview = try builder.build(project: project)
+                Task { @MainActor [weak owner] in
+                    guard let owner else { return }
+                    owner.isPreparingPreview = false
+                    guard owner.selectedProject?.id == project.id else { return }
+                    do {
+                        try owner.playback.play(
+                            url: preview.outputURL,
+                            title: "已完成 \(preview.segmentCount) 段",
+                            contextID: project.id,
+                            initialPosition: project.playbackPositionSeconds,
+                            tracksProgress: true
+                        )
+                        owner.status = "正在播放已完成的 \(preview.segmentCount) 段，后续仍在本机生成"
+                    } catch {
+                        owner.status = "播放失败：\(error.localizedDescription)"
+                    }
+                }
+            } catch {
+                Task { @MainActor [weak owner] in
+                    owner?.isPreparingPreview = false
+                    owner?.status = "预览准备失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    func playFromBeginning() {
+        guard var project = selectedProject else { return }
+        project.playbackPositionSeconds = 0
+        project.listeningCompleted = false
+        project.updatedAt = Date()
+        do {
+            try store.save(project)
+            selectedProject = project
+            updateProjectInList(project)
+            if playback.contextID == project.id { playback.stopAndUnload() }
+            playBestAvailableAudio()
+        } catch {
+            status = "播放位置重置失败：\(error.localizedDescription)"
         }
     }
 
@@ -671,6 +750,39 @@ final class NarrationWorkspaceModel: ObservableObject {
             finalAudioURLs = [:]
             if playback.contextID == project.id { playback.stopAndUnload() }
             status = "文章或音色已经修改，点击“生成音频”即可自动更新"
+        }
+    }
+
+    private func persistPlaybackProgress(_ snapshot: PlaybackProgressSnapshot) {
+        guard var project = try? store.loadProject(id: snapshot.contextID) else { return }
+        let maximumPosition = max(0, snapshot.duration)
+        project.playbackPositionSeconds = min(
+            maximumPosition,
+            max(0, snapshot.position)
+        )
+        project.lastPlayedAt = Date()
+        project.listeningCompleted = snapshot.state == .finished
+            && !project.segments.isEmpty
+            && project.segments.allSatisfy { $0.generationState == .completed }
+        do {
+            try store.save(project)
+            if selectedProject?.id == project.id {
+                selectedProject = project
+            }
+            updateProjectInList(project)
+        } catch {
+            status = "播放位置保存失败：\(error.localizedDescription)"
+        }
+    }
+
+    private func updateProjectInList(_ project: NarrationProject) {
+        if let index = projects.firstIndex(where: { $0.id == project.id }) {
+            projects[index] = project
+        } else {
+            projects.append(project)
+        }
+        projects.sort {
+            ($0.lastPlayedAt ?? $0.updatedAt) > ($1.lastPlayedAt ?? $1.updatedAt)
         }
     }
 

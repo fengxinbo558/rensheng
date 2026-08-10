@@ -10,6 +10,13 @@ enum PlaybackState: Equatable {
     case failed
 }
 
+struct PlaybackProgressSnapshot: Equatable {
+    let contextID: String
+    let position: TimeInterval
+    let duration: TimeInterval
+    let state: PlaybackState
+}
+
 @MainActor
 final class PlaybackController: ObservableObject {
     @Published private(set) var state: PlaybackState = .empty
@@ -20,6 +27,7 @@ final class PlaybackController: ObservableObject {
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var rate: Double = 1.0
     @Published private(set) var errorMessage: String?
+    var onProgressChanged: ((PlaybackProgressSnapshot) -> Void)?
 
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
@@ -29,6 +37,8 @@ final class PlaybackController: ObservableObject {
     private var baseFrame: AVAudioFramePosition = 0
     private var timer: Timer?
     private var playbackToken = UUID()
+    private var lastReportedPosition: TimeInterval = -.infinity
+    private var tracksProgress = false
 
     init() {
         engine.attach(player)
@@ -56,7 +66,9 @@ final class PlaybackController: ObservableObject {
         url: URL,
         title: String,
         contextID: String,
-        initialRate: Double = 1.0
+        initialRate: Double = 1.0,
+        initialPosition: TimeInterval = 0,
+        tracksProgress: Bool = false
     ) throws {
         stopAndUnload()
         let file = try AVAudioFile(forReading: url)
@@ -71,8 +83,14 @@ final class PlaybackController: ObservableObject {
         self.contextID = contextID
         sourceSampleRate = format.sampleRate
         duration = Double(file.length) / format.sampleRate
-        currentTime = 0
-        baseFrame = 0
+        let lastPlayableFrame = max(0, file.length - 1)
+        let requestedFrame = AVAudioFramePosition(
+            (max(0, initialPosition) * format.sampleRate).rounded()
+        )
+        baseFrame = min(lastPlayableFrame, requestedFrame)
+        currentTime = Double(baseFrame) / format.sampleRate
+        lastReportedPosition = -.infinity
+        self.tracksProgress = tracksProgress
         setRate(initialRate)
 
         engine.disconnectNodeOutput(player)
@@ -86,6 +104,7 @@ final class PlaybackController: ObservableObject {
         state = .playing
         errorMessage = nil
         startTimer()
+        reportProgress(force: true)
     }
 
     func togglePlayback() {
@@ -107,6 +126,7 @@ final class PlaybackController: ObservableObject {
         player.pause()
         state = .paused
         stopTimer()
+        reportProgress(force: true)
     }
 
     func resume() {
@@ -118,15 +138,21 @@ final class PlaybackController: ObservableObject {
 
     func stop() {
         guard hasAudio else { return }
+        updateCurrentTime()
         playbackToken = UUID()
         player.stop()
         baseFrame = 0
         currentTime = 0
         state = .stopped
         stopTimer()
+        reportProgress(force: true)
     }
 
     func stopAndUnload() {
+        if hasAudio {
+            updateCurrentTime()
+            reportProgress(force: true)
+        }
         playbackToken = UUID()
         player.stop()
         engine.stop()
@@ -143,6 +169,8 @@ final class PlaybackController: ObservableObject {
         title = "没有载入音频"
         errorMessage = nil
         state = .empty
+        lastReportedPosition = -.infinity
+        tracksProgress = false
     }
 
     func seek(to requestedTime: TimeInterval) {
@@ -156,6 +184,7 @@ final class PlaybackController: ObservableObject {
         if target >= duration {
             state = .finished
             stopTimer()
+            reportProgress(force: true)
             return
         }
         do {
@@ -168,6 +197,7 @@ final class PlaybackController: ObservableObject {
                 state = .paused
                 stopTimer()
             }
+            reportProgress(force: true)
         } catch {
             fail(error)
         }
@@ -218,6 +248,7 @@ final class PlaybackController: ObservableObject {
                 self.currentTime = self.duration
                 self.state = .finished
                 self.stopTimer()
+                self.reportProgress(force: true)
             }
         }
     }
@@ -247,6 +278,7 @@ final class PlaybackController: ObservableObject {
               sourceSampleRate > 0 else { return }
         let sourceFrame = baseFrame + nodeTime.sampleTime
         currentTime = min(duration, max(0, Double(sourceFrame) / sourceSampleRate))
+        reportProgress(force: false)
     }
 
     private func startTimer() {
@@ -259,6 +291,20 @@ final class PlaybackController: ObservableObject {
     private func stopTimer() {
         timer?.invalidate()
         timer = nil
+    }
+
+    private func reportProgress(force: Bool) {
+        guard tracksProgress, let contextID else { return }
+        guard force || abs(currentTime - lastReportedPosition) >= 5 else { return }
+        lastReportedPosition = currentTime
+        onProgressChanged?(
+            PlaybackProgressSnapshot(
+                contextID: contextID,
+                position: currentTime,
+                duration: duration,
+                state: state
+            )
+        )
     }
 
     private func fail(_ error: Error) {

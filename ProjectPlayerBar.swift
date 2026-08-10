@@ -2,9 +2,13 @@ import SwiftUI
 
 struct ProjectPlayerBar: View {
     let hasFinalAudio: Bool
+    let availableSegmentCount: Int
+    let isPreparingPreview: Bool
+    let savedPosition: TimeInterval
     @ObservedObject var playback: PlaybackController
     let contextID: String
     let onPlay: () -> Void
+    let onPlayFromBeginning: () -> Void
     let onReveal: () -> Void
 
     var body: some View {
@@ -15,13 +19,16 @@ struct ProjectPlayerBar: View {
                     .foregroundStyle(Color(red: 0.18, green: 0.41, blue: 0.78))
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(hasFinalAudio ? "朗读成品已就绪" : "完成全文后可制作成品")
+                    Text(summaryTitle)
                         .font(.subheadline.weight(.semibold))
-                    Text("WAV、M4A 和 MP3 都可在其他设备播放")
+                    Text(summaryDetail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if savedPosition > 0, hasFinalAudio || availableSegmentCount > 0 {
+                    Button("从头播放") { onPlayFromBeginning() }
+                }
                 Button("在访达中显示") { onReveal() }
                     .disabled(!hasFinalAudio)
             }
@@ -29,11 +36,24 @@ struct ProjectPlayerBar: View {
                 playback: playback,
                 contextID: contextID,
                 fallbackTitle: hasFinalAudio ? "朗读成品" : "尚无可播放成品",
-                canStart: hasFinalAudio,
+                canStart: (hasFinalAudio || availableSegmentCount > 0) && !isPreparingPreview,
                 onStart: onPlay
             )
         }
         .padding(14)
         .background(Color(red: 0.91, green: 0.95, blue: 0.96), in: RoundedRectangle(cornerRadius: 13))
+    }
+
+    private var summaryTitle: String {
+        if isPreparingPreview { return "正在准备已完成部分…" }
+        if hasFinalAudio { return savedPosition > 0 ? "可以继续收听" : "朗读成品已就绪" }
+        if availableSegmentCount > 0 { return "已经可以开始听" }
+        return "第一段完成后即可收听"
+    }
+
+    private var summaryDetail: String {
+        if hasFinalAudio { return "WAV、M4A 和 MP3 都可在其他设备播放" }
+        if availableSegmentCount > 0 { return "已完成 \(availableSegmentCount) 段，后续可以继续生成" }
+        return "无需等待全文生成完成"
     }
 }

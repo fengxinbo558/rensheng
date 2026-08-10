@@ -28,13 +28,27 @@ struct PlaybackControllerSelfTest {
         )
 
         let controller = PlaybackController()
-        try controller.play(url: audio, title: "播放器自检", contextID: "self-test", initialRate: 1.0)
+        var progressEvents: [PlaybackProgressSnapshot] = []
+        controller.onProgressChanged = { progressEvents.append($0) }
+        try controller.play(
+            url: audio,
+            title: "播放器自检",
+            contextID: "self-test",
+            initialRate: 1.0,
+            initialPosition: 1.25,
+            tracksProgress: true
+        )
         try playbackExpect(controller.state == .playing, "开始播放后状态不正确")
+        try playbackExpect(controller.currentTime >= 1.24, "没有从保存位置开始播放")
         try await Task.sleep(for: .milliseconds(250))
         controller.pause()
         let pausedTime = controller.currentTime
         try playbackExpect(controller.state == .paused, "暂停播放后状态不正确")
-        try playbackExpect(pausedTime > 0, "暂停时没有记录播放进度")
+        try playbackExpect(pausedTime > 1.25, "暂停时没有记录播放进度")
+        try playbackExpect(
+            progressEvents.contains(where: { $0.contextID == "self-test" && $0.position > 1.25 }),
+            "暂停时没有发送可保存的播放进度"
+        )
         try await Task.sleep(for: .milliseconds(250))
         try playbackExpect(abs(controller.currentTime - pausedTime) < 0.03, "暂停后进度仍在移动")
 
