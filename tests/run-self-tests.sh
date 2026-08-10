@@ -88,4 +88,8 @@ run_test "${TESTS_DIR}/GenerationQueueSelfTest.swift"
 run_test "${TESTS_DIR}/AudioAssemblerSelfTest.swift"
 run_test "${TESTS_DIR}/AvailableAudioBuilderSelfTest.swift"
 run_test "${TESTS_DIR}/AudioTimeStretcherSelfTest.swift"
-run_test "${TESTS_DIR}/PlaybackControllerSelfTest.swift"
+if [[ "${LOCAL_AUDIO_PROBE_SKIP_PLAYBACK_TEST:-0}" == "1" ]]; then
+  print -r -- "PlaybackControllerSelfTest: SKIP（当前会话没有可用音频输出周期）"
+else
+  run_test "${TESTS_DIR}/PlaybackControllerSelfTest.swift"
+fi
