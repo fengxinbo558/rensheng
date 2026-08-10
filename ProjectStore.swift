@@ -166,7 +166,7 @@ enum ProjectStoreError: LocalizedError {
         case .invalidRelativePath:
             return "项目文件路径无效"
         case .projectNotFound:
-            return "没有找到这个朗读项目"
+            return "没有找到这个声音作品"
         }
     }
 }

@@ -7,6 +7,14 @@ enum AudioExportFormat: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     var fileExtension: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .wav: return "WAV 无损母版"
+        case .m4a: return "M4A 推荐"
+        case .mp3: return "MP3 通用格式"
+        }
+    }
 }
 
 final class AudioExporter {
@@ -47,6 +55,39 @@ final class AudioExporter {
 
         guard FileManager.default.fileExists(atPath: temporary.path),
               (try temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) > 0 else {
+            throw AudioExporterError.invalidOutput
+        }
+        if FileManager.default.fileExists(atPath: destination.path) {
+            _ = try FileManager.default.replaceItemAt(destination, withItemAt: temporary)
+        } else {
+            try FileManager.default.moveItem(at: temporary, to: destination)
+        }
+    }
+
+    func deliverExisting(
+        _ source: URL,
+        to destination: URL,
+        format: AudioExportFormat
+    ) throws {
+        guard FileManager.default.fileExists(atPath: source.path) else {
+            throw AudioExporterError.missingSource
+        }
+        guard source.pathExtension.lowercased() == format.fileExtension,
+              destination.pathExtension.lowercased() == format.fileExtension else {
+            throw AudioExporterError.wrongFileExtension
+        }
+        if source.standardizedFileURL == destination.standardizedFileURL { return }
+
+        let parent = destination.deletingLastPathComponent()
+        guard FileManager.default.fileExists(atPath: parent.path) else {
+            throw AudioExporterError.destinationUnavailable
+        }
+        let temporary = parent.appendingPathComponent(
+            ".voice-director-\(UUID().uuidString).\(format.fileExtension)"
+        )
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        try FileManager.default.copyItem(at: source, to: temporary)
+        guard (try temporary.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) > 0 else {
             throw AudioExporterError.invalidOutput
         }
         if FileManager.default.fileExists(atPath: destination.path) {
@@ -137,6 +178,7 @@ enum AudioExporterError: LocalizedError {
     case conversionFailed(String)
     case mp3EncoderMissing
     case invalidOutput
+    case destinationUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -150,6 +192,8 @@ enum AudioExporterError: LocalizedError {
             return "应用的 MP3 导出组件不完整"
         case .invalidOutput:
             return "导出完成，但文件没有通过完整性检查"
+        case .destinationUnavailable:
+            return "所选保存位置已经不可用"
         }
     }
 }

@@ -1,61 +1,85 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ProjectEditorView: View {
     @ObservedObject var model: NarrationWorkspaceModel
     @ObservedObject var voiceLibrary: VoiceLibrary
     let onManageVoices: () -> Void
 
-    @State private var isAdvancedEditorExpanded = false
+    @State private var isPieceEditorExpanded = false
+    @State private var isSourceEditorExpanded = true
 
     private var selectedVoice: VoiceProfile? {
         voiceLibrary.profiles.first(where: { $0.id == model.draftVoiceID })
     }
 
+    private var sourceExpansionKey: String {
+        let projectID = model.selectedProject?.id ?? "new"
+        let hasSegments = model.selectedProject?.segments.isEmpty == false
+        return "\(projectID)-\(hasSegments)"
+    }
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 18) {
                 hero
-                articleInput
 
                 if let project = model.selectedProject, !project.segments.isEmpty {
+                    PublishingProgressView(
+                        progress: PublishingProgress(
+                            project: project,
+                            availableFormats: Array(model.finalAudioURLs.keys)
+                        )
+                    )
+                    productionControls
                     generationSection(project)
-                    advancedEditor(project)
+                    sourceEditor(project)
+                    pieceEditor(project)
+                } else {
+                    newProjectInput
                 }
 
                 statusBar
             }
             .frame(maxWidth: 920)
             .padding(.horizontal, 28)
-            .padding(.vertical, 24)
+            .padding(.vertical, 22)
             .frame(maxWidth: .infinity)
         }
-        .background(Color(red: 0.975, green: 0.982, blue: 0.99))
+        .background(Color(red: 0.972, green: 0.979, blue: 0.991))
         .onAppear {
             model.setDefaultVoiceIfNeeded(voiceLibrary.selectedProfile.id)
+            syncSourceExpansion()
+        }
+        .onChange(of: sourceExpansionKey) { _, _ in
+            syncSourceExpansion()
+            isPieceEditorExpanded = false
         }
     }
 
     private var hero: some View {
         HStack(alignment: .top, spacing: 18) {
             VStack(alignment: .leading, spacing: 7) {
-                Text("声音导演")
+                Text("声音导演 · 私人声音出版台")
                     .font(.system(size: 13, weight: .bold, design: .rounded))
-                    .tracking(1.5)
-                    .foregroundStyle(Color(red: 0.18, green: 0.41, blue: 0.78))
-                Text("把没时间看的，\n留到稍后听。")
-                    .font(.system(size: 31, weight: .semibold, design: .serif))
+                    .tracking(1.2)
+                    .foregroundStyle(Color(red: 0.23, green: 0.44, blue: 0.78))
+                Text(heroTitle)
+                    .font(.system(size: 29, weight: .semibold, design: .serif))
                     .lineSpacing(2)
-                Text("内容留在本机，从上次的位置继续。")
+                    .lineLimit(2)
+                Text(heroSubtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 5) {
-                Text("完全离线")
+                Label("本地作品库", systemImage: "lock.fill")
                     .font(.caption.weight(.bold))
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(Color.green.opacity(0.12), in: Capsule())
+                    .background(Color(red: 0.87, green: 0.95, blue: 0.92), in: Capsule())
                 Text("普通话 · 最多 30000 字")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
@@ -63,7 +87,21 @@ struct ProjectEditorView: View {
         }
     }
 
-    private var articleInput: some View {
+    private var heroTitle: String {
+        guard let project = model.selectedProject,
+              !project.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return "把文稿，做成能反复修改的声音作品。"
+        }
+        return project.name
+    }
+
+    private var heroSubtitle: String {
+        model.selectedProject?.segments.isEmpty == false
+            ? "修改一段，只重做这一段；成品随时可以继续编辑和导出。"
+            : "录一次声音，长期制作；原稿、声音和成品默认留在本机。"
+    }
+
+    private var newProjectInput: some View {
         VStack(alignment: .leading, spacing: 14) {
             SourceImportView(
                 isBusy: model.isImportingSource,
@@ -72,112 +110,194 @@ struct ProjectEditorView: View {
                 onImportWebPage: { model.importWebPage($0) }
             )
 
-            HStack {
-                Text("听读内容")
-                    .font(.headline)
-                Text("默认整理成自然口语，原文始终保留")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(model.characterCountLabel)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(
-                        model.draftText.count > NarrationProject.maximumCharacterCount
-                            ? Color.red
-                            : Color.secondary
-                    )
-            }
-
-            TextEditor(
-                text: Binding(
-                    get: { model.draftText },
-                    set: { model.updateDraftText($0) }
-                )
-            )
-                .font(.system(size: 15.5))
-                .lineSpacing(5)
-                .scrollContentBackground(.hidden)
-                .padding(12)
-                .background(Color.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 12))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(
-                            model.draftText.count > NarrationProject.maximumCharacterCount
-                                ? Color.red.opacity(0.7)
-                                : Color.black.opacity(0.08),
-                            lineWidth: 1
-                        )
-                }
-                .frame(minHeight: 210)
-                .accessibilityLabel("要制作成听读音频的文字")
-                .accessibilityHint("当前版本最多支持 30000 个字")
-
-            HStack(spacing: 10) {
-                Picker(
-                    "朗读音色",
-                    selection: Binding(
-                        get: { model.draftVoiceID },
-                        set: { model.updateDraftVoiceID($0) }
-                    )
-                ) {
-                    ForEach(voiceLibrary.profiles) { voice in
-                        Text(voice.name).tag(voice.id)
-                    }
-                }
-                .frame(maxWidth: 300)
-                .accessibilityLabel("朗读音色")
-
-                Button("录入新音色") { onManageVoices() }
-                Spacer()
-
-                if model.isGenerating || model.isFinishing {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-                Button(primaryActionLabel) {
-                    guard let selectedVoice else { return }
-                    model.startGeneration(using: selectedVoice)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(
-                    !model.canStartGeneration
-                        || selectedVoice == nil
-                        || !model.finalAudioURLs.isEmpty
-                )
-                .help("自动分析、保存并生成完整音频")
-            }
+            sourceTextHeader(title: "作品原稿")
+            sourceTextEditor(minHeight: 220)
+            productionControls
         }
         .padding(18)
-        .background(Color(red: 0.925, green: 0.949, blue: 0.978), in: RoundedRectangle(cornerRadius: 16))
+        .background(
+            Color(red: 0.925, green: 0.949, blue: 0.978),
+            in: RoundedRectangle(cornerRadius: 16)
+        )
+    }
+
+    private func sourceEditor(_ project: NarrationProject) -> some View {
+        DisclosureGroup(isExpanded: $isSourceEditorExpanded) {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(spacing: 10) {
+                    TextField("作品名称", text: $model.draftName)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("声音作品名称")
+                        .onSubmit { model.saveProjectName() }
+                    Button("保存名称") { model.saveProjectName() }
+                        .disabled(model.isGenerating || model.isFinishing)
+                }
+
+                sourceTextHeader(title: "原稿内容")
+                sourceTextEditor(minHeight: 180)
+
+                Label(
+                    "修改原稿或音色后，点击上方“更新声音作品”；应用会保留没有变化的片段。",
+                    systemImage: "arrow.triangle.2.circlepath"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            .padding(.top, 14)
+        } label: {
+            HStack(spacing: 11) {
+                SourceBadgeView(kind: project.source.kind)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("原稿与来源")
+                        .font(.headline)
+                    Text("\(project.source.title) · \(project.sourceText.count) 字")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Text(isSourceEditorExpanded ? "收起原稿" : "查看或修改")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color(red: 0.23, green: 0.44, blue: 0.78))
+            }
+        }
+        .padding(17)
+        .background(Color.white.opacity(0.74), in: RoundedRectangle(cornerRadius: 16))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.black.opacity(0.06), lineWidth: 1)
+        }
+        .accessibilityHint("展开后可以修改作品名称、原稿和朗读音色")
+    }
+
+    private func sourceTextHeader(title: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.headline)
+            Text("默认整理成自然口语，原文始终保留")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(model.characterCountLabel)
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(
+                    model.draftText.count > NarrationProject.maximumCharacterCount
+                        ? Color.red
+                        : Color.secondary
+                )
+        }
+    }
+
+    private func sourceTextEditor(minHeight: CGFloat) -> some View {
+        TextEditor(
+            text: Binding(
+                get: { model.draftText },
+                set: { model.updateDraftText($0) }
+            )
+        )
+        .font(.system(size: 15.5))
+        .lineSpacing(5)
+        .scrollContentBackground(.hidden)
+        .padding(12)
+        .background(Color.white.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(
+                    model.draftText.count > NarrationProject.maximumCharacterCount
+                        ? Color.red.opacity(0.7)
+                        : Color.black.opacity(0.08),
+                    lineWidth: 1
+                )
+        }
+        .frame(minHeight: minHeight)
+        .accessibilityLabel("要制作成声音作品的原稿")
+        .accessibilityHint("当前版本最多支持 30000 个字")
+    }
+
+    private var productionControls: some View {
+        HStack(spacing: 10) {
+            Picker(
+                "作品音色",
+                selection: Binding(
+                    get: { model.draftVoiceID },
+                    set: { model.updateDraftVoiceID($0) }
+                )
+            ) {
+                ForEach(voiceLibrary.profiles) { voice in
+                    Text(voice.name).tag(voice.id)
+                }
+            }
+            .frame(maxWidth: 300)
+            .accessibilityLabel("声音作品音色")
+
+            Button("录入新音色") { onManageVoices() }
+            Spacer()
+
+            if model.isGenerating || model.isFinishing {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel(model.isFinishing ? "正在制作成品" : "正在生成声音")
+            }
+            Button(primaryActionLabel) {
+                guard let selectedVoice else { return }
+                model.startGeneration(using: selectedVoice)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(
+                !model.canStartGeneration
+                    || selectedVoice == nil
+                    || !model.finalAudioURLs.isEmpty
+            )
+            .help(primaryActionHelp)
+        }
+        .padding(16)
+        .background(Color.white.opacity(0.86), in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(red: 0.23, green: 0.44, blue: 0.78).opacity(0.12), lineWidth: 1)
+        }
     }
 
     private var primaryActionLabel: String {
-        if model.isGenerating { return "正在生成…" }
+        if model.isGenerating { return "正在制作声音…" }
         if model.isFinishing { return "正在制作成品…" }
-        if !model.finalAudioURLs.isEmpty { return "音频已生成" }
-        if model.completedSegmentCount > 0 { return "继续生成" }
-        return "生成音频"
+        if !model.finalAudioURLs.isEmpty { return "作品已完成" }
+        if model.completedSegmentCount > 0 { return "继续制作" }
+        if model.selectedProject?.segments.isEmpty == false { return "更新声音作品" }
+        return "制作声音作品"
+    }
+
+    private var primaryActionHelp: String {
+        if model.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "先放入或输入一份原稿"
+        }
+        if model.draftText.count > NarrationProject.maximumCharacterCount {
+            return "原稿需要缩短到 30000 字以内"
+        }
+        if selectedVoice == nil { return "先选择一个可用音色" }
+        if !model.finalAudioURLs.isEmpty { return "作品已经完成；修改原稿或音色后可以更新" }
+        return "保存原稿、安排朗读稿并制作完整声音作品"
     }
 
     private func generationSection(_ project: NarrationProject) -> some View {
         VStack(alignment: .leading, spacing: 13) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("生成结果")
+                    Text("作品成品")
                         .font(.title3.weight(.semibold))
                     Text("已完成 \(model.completedSegmentCount) / \(project.segments.count) 个声音片段")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                     if model.estimatedFinalDuration > 0 {
-                        Text("预计成品 \(formattedDuration(model.estimatedFinalDuration))")
+                        Text("预计时长 \(formattedDuration(model.estimatedFinalDuration))")
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
                 }
                 Spacer()
                 if model.isFinishing {
-                    Label("正在自动制作 WAV、M4A 和 MP3", systemImage: "waveform")
+                    Label("正在统一音量并制作三种格式", systemImage: "waveform")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -193,24 +313,29 @@ struct ProjectEditorView: View {
                 hasFinalAudio: !model.finalAudioURLs.isEmpty,
                 availableSegmentCount: model.availableSegmentCount,
                 isPreparingPreview: model.isPreparingPreview,
+                availableExportFormats: AudioExportFormat.allCases.filter {
+                    model.finalAudioURLs[$0] != nil
+                },
+                isExporting: model.isDeliveringExport,
                 savedPosition: project.playbackPositionSeconds,
                 playback: model.playback,
                 contextID: project.id,
                 onPlay: { model.playBestAvailableAudio() },
                 onPlayFromBeginning: { model.playFromBeginning() },
-                onReveal: { model.revealFinal() }
+                onReveal: { model.revealFinal() },
+                onExport: { presentExportPanel(format: $0, project: project) }
             )
         }
         .padding(18)
-        .background(Color.white.opacity(0.82), in: RoundedRectangle(cornerRadius: 16))
+        .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 16))
         .overlay {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.black.opacity(0.07), lineWidth: 1)
         }
     }
 
-    private func advancedEditor(_ project: NarrationProject) -> some View {
-        DisclosureGroup(isExpanded: $isAdvancedEditorExpanded) {
+    private func pieceEditor(_ project: NarrationProject) -> some View {
+        DisclosureGroup(isExpanded: $isPieceEditorExpanded) {
             VStack(alignment: .leading, spacing: 13) {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -234,11 +359,11 @@ struct ProjectEditorView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 230)
                     .disabled(model.isGenerating || model.isFinishing)
-                    .accessibilityHint("切换后会重新安排朗读短句，原文不会被覆盖")
+                    .accessibilityHint("切换后重新安排朗读短句，原文不会被覆盖")
 
                     scriptStateLabel(project)
                     Spacer()
-                    Button("重新整理") { model.reprepareScript() }
+                    Button("重新整理朗读稿") { model.reprepareScript() }
                         .disabled(model.isGenerating || model.isFinishing)
                         .help("按当前朗读方式重新整理全文")
                 }
@@ -246,13 +371,11 @@ struct ProjectEditorView: View {
                 Divider()
 
                 HStack {
-                    TextField("项目名称（可不填）", text: $model.draftName)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(maxWidth: 340)
-                        .accessibilityLabel("朗读项目名称")
-                        .onSubmit { model.saveProjectName() }
-                    Button("保存名称") { model.saveProjectName() }
-                        .disabled(model.isGenerating || model.isFinishing)
+                    Text("逐段修改")
+                        .font(.subheadline.weight(.semibold))
+                    Text("保存文字后，只需重新生成有变化的语义段")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Stepper(
                         value: Binding(
@@ -267,10 +390,6 @@ struct ProjectEditorView: View {
                     }
                     .disabled(model.isGenerating || model.isFinishing)
                 }
-
-                Text("只在需要时修改。展开一段可以对照原文、修正实际朗读、调整成品节奏或单独重做。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
 
                 ForEach(project.segments) { segment in
                     SegmentEditorRow(
@@ -293,21 +412,25 @@ struct ProjectEditorView: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("高级编辑")
+                    Text("编辑作品")
                         .font(.headline)
-                    Text("\(project.segments.count) 个片段 · 正常情况下无需打开")
+                    Text("\(project.segments.count) 个语义段 · 修改一段，只重做这一段")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Text(isPieceEditorExpanded ? "收起" : "展开编辑")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color(red: 0.23, green: 0.44, blue: 0.78))
             }
         }
         .padding(18)
-        .background(Color.white.opacity(0.64), in: RoundedRectangle(cornerRadius: 16))
+        .background(Color.white.opacity(0.68), in: RoundedRectangle(cornerRadius: 16))
         .overlay {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.black.opacity(0.06), lineWidth: 1)
         }
+        .accessibilityHint("展开后可以对照原稿、修改朗读文字并单独重做某一段")
     }
 
     @ViewBuilder
@@ -318,7 +441,7 @@ struct ProjectEditorView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         case .completed:
-            Label("稿件已保存", systemImage: "checkmark.circle.fill")
+            Label("朗读稿已保存", systemImage: "checkmark.circle.fill")
                 .font(.caption)
                 .foregroundStyle(.green)
         case .fallback:
@@ -334,6 +457,37 @@ struct ProjectEditorView: View {
         }
     }
 
+    private func presentExportPanel(format: AudioExportFormat, project: NarrationProject) {
+        guard model.finalAudioURLs[format] != nil else { return }
+        let panel = NSSavePanel()
+        panel.title = "导出 \(format.fileExtension.uppercased()) 成品"
+        panel.prompt = "导出"
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = "\(safeFileName(project.name)).\(format.fileExtension)"
+        if let contentType = UTType(filenameExtension: format.fileExtension) {
+            panel.allowedContentTypes = [contentType]
+        }
+        panel.begin { response in
+            guard response == .OK, let destination = panel.url else { return }
+            DispatchQueue.main.async {
+                model.deliverFinal(format, to: destination)
+            }
+        }
+    }
+
+    private func safeFileName(_ rawName: String) -> String {
+        let invalid = CharacterSet(charactersIn: "/:\\?%*|\"<>")
+        let pieces = rawName.components(separatedBy: invalid)
+        let clean = pieces.joined(separator: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "声音作品" : String(clean.prefix(80))
+    }
+
+    private func syncSourceExpansion() {
+        isSourceEditorExpanded = model.selectedProject?.segments.isEmpty != false
+    }
+
     private func formattedDuration(_ duration: TimeInterval) -> String {
         let seconds = max(0, Int(duration.rounded()))
         return String(format: "%d:%02d", seconds / 60, seconds % 60)
@@ -342,7 +496,7 @@ struct ProjectEditorView: View {
     private var statusBar: some View {
         HStack(alignment: .top, spacing: 9) {
             Image(systemName: "info.circle.fill")
-                .foregroundStyle(Color(red: 0.18, green: 0.41, blue: 0.78))
+                .foregroundStyle(Color(red: 0.23, green: 0.44, blue: 0.78))
                 .accessibilityHidden(true)
             Text(model.status)
                 .font(.subheadline)
@@ -351,6 +505,6 @@ struct ProjectEditorView: View {
         }
         .padding(.bottom, 8)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("项目状态：\(model.status)")
+        .accessibilityLabel("作品状态：\(model.status)")
     }
 }

@@ -25,7 +25,7 @@ struct NarrationWorkspaceView: View {
             )
         }
         .confirmationDialog(
-            "删除朗读项目？",
+            "删除声音作品？",
             isPresented: $showingDeleteConfirmation,
             titleVisibility: .visible
         ) {
@@ -39,7 +39,7 @@ struct NarrationWorkspaceView: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("“\(projectToDelete?.name ?? "这个项目")”的文字和本地音频会移到废纸篓。")
+            Text("“\(projectToDelete?.name ?? "这个作品")”的原稿和本地音频会移到废纸篓。")
         }
     }
 }

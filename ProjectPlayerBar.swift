@@ -4,12 +4,15 @@ struct ProjectPlayerBar: View {
     let hasFinalAudio: Bool
     let availableSegmentCount: Int
     let isPreparingPreview: Bool
+    let availableExportFormats: [AudioExportFormat]
+    let isExporting: Bool
     let savedPosition: TimeInterval
     @ObservedObject var playback: PlaybackController
     let contextID: String
     let onPlay: () -> Void
     let onPlayFromBeginning: () -> Void
     let onReveal: () -> Void
+    let onExport: (AudioExportFormat) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -29,13 +32,29 @@ struct ProjectPlayerBar: View {
                 if savedPosition > 0, hasFinalAudio || availableSegmentCount > 0 {
                     Button("从头播放") { onPlayFromBeginning() }
                 }
+                if isExporting {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("正在导出声音作品")
+                }
+                Menu("导出成品") {
+                    Button(AudioExportFormat.m4a.label) { onExport(.m4a) }
+                        .disabled(!availableExportFormats.contains(.m4a))
+                    Button(AudioExportFormat.mp3.label) { onExport(.mp3) }
+                        .disabled(!availableExportFormats.contains(.mp3))
+                    Divider()
+                    Button(AudioExportFormat.wav.label) { onExport(.wav) }
+                        .disabled(!availableExportFormats.contains(.wav))
+                }
+                .disabled(availableExportFormats.isEmpty || isExporting)
+                .help("把成品保存到你选择的位置")
                 Button("在访达中显示") { onReveal() }
                     .disabled(!hasFinalAudio)
             }
             PlaybackControlsView(
                 playback: playback,
                 contextID: contextID,
-                fallbackTitle: hasFinalAudio ? "朗读成品" : "尚无可播放成品",
+                fallbackTitle: hasFinalAudio ? "声音作品" : "尚无可播放成品",
                 canStart: (hasFinalAudio || availableSegmentCount > 0) && !isPreparingPreview,
                 onStart: onPlay
             )
@@ -46,7 +65,7 @@ struct ProjectPlayerBar: View {
 
     private var summaryTitle: String {
         if isPreparingPreview { return "正在准备已完成部分…" }
-        if hasFinalAudio { return savedPosition > 0 ? "可以继续收听" : "朗读成品已就绪" }
+        if hasFinalAudio { return savedPosition > 0 ? "可以继续收听" : "声音作品已就绪" }
         if availableSegmentCount > 0 { return "已经可以开始听" }
         return "第一段完成后即可收听"
     }

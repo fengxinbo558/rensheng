@@ -27,7 +27,7 @@ struct SourceImportView: View {
                 .frame(width: 42, height: 42)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("放进一个想听的内容")
+                    Text("放进一份要制作的内容")
                         .font(.headline)
                     Text("粘贴文字，或拖入一份有可选择文字的 PDF")
                         .font(.caption)
@@ -49,7 +49,7 @@ struct SourceImportView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(isBusy)
-                .help("读取剪贴板里的文字并保存为听读项目")
+                .help("读取剪贴板里的文字并保存为声音作品")
 
                 Button {
                     showingPDFPicker = true

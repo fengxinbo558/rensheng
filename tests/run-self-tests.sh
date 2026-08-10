@@ -33,6 +33,7 @@ run_test() {
     "${PROJECT_DIR}/NarrationSegment.swift" \
     "${PROJECT_DIR}/EmotionInstructionBuilder.swift" \
     "${PROJECT_DIR}/NarrationProject.swift" \
+    "${PROJECT_DIR}/PublishingProgress.swift" \
     "${PROJECT_DIR}/ContentImporter.swift" \
     "${PROJECT_DIR}/PlainTextImporter.swift" \
     "${PROJECT_DIR}/PDFTextImporter.swift" \
@@ -74,6 +75,8 @@ run_test "${TESTS_DIR}/DeviceSynthesisPolicySelfTest.swift"
 run_test "${TESTS_DIR}/EmotionInstructionBuilderSelfTest.swift"
 run_test "${TESTS_DIR}/ProjectStoreSelfTest.swift"
 run_test "${TESTS_DIR}/ProjectMigrationSelfTest.swift"
+run_test "${TESTS_DIR}/PublishingProgressSelfTest.swift"
+run_test "${TESTS_DIR}/ExistingAudioDeliverySelfTest.swift"
 run_test "${TESTS_DIR}/ContentImporterSelfTest.swift"
 run_test "${TESTS_DIR}/PDFTextImporterSelfTest.swift"
 run_test "${TESTS_DIR}/ContentImportCoordinatorSelfTest.swift"

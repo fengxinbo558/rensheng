@@ -8,11 +8,12 @@ final class NarrationWorkspaceModel: ObservableObject {
     @Published var draftName = ""
     @Published var draftText = ""
     @Published var draftVoiceID = ""
-    @Published private(set) var status = "新建一个朗读项目，粘贴文章后开始分析"
+    @Published private(set) var status = "新建一份声音作品，放入原稿后开始制作"
     @Published private(set) var isGenerating = false
     @Published private(set) var isFinishing = false
     @Published private(set) var isPreparingPreview = false
     @Published private(set) var isImportingSource = false
+    @Published private(set) var isDeliveringExport = false
     @Published private(set) var queueProgress: GenerationQueueProgress?
     @Published private(set) var finalAudioURLs: [AudioExportFormat: URL] = [:]
 
@@ -142,9 +143,9 @@ final class NarrationWorkspaceModel: ObservableObject {
             selectedProject = project
             draftName = project.name
             reloadProjects(selecting: project.id)
-            status = "项目名称已保存"
+            status = "作品名称已保存"
         } catch {
-            status = "项目名称保存失败：\(error.localizedDescription)"
+            status = "作品名称保存失败：\(error.localizedDescription)"
         }
     }
 
@@ -600,12 +601,12 @@ final class NarrationWorkspaceModel: ObservableObject {
         do {
             try playback.play(
                 url: url,
-                title: "朗读成品",
+                title: "声音作品",
                 contextID: project.id,
                 initialPosition: project.playbackPositionSeconds,
                 tracksProgress: true
             )
-            status = "正在播放朗读成品"
+            status = "正在播放声音作品"
         } catch {
             status = "播放失败：\(error.localizedDescription)"
         }
@@ -678,6 +679,32 @@ final class NarrationWorkspaceModel: ObservableObject {
         NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
+    func deliverFinal(_ format: AudioExportFormat, to destination: URL) {
+        guard !isDeliveringExport,
+              let source = finalAudioURLs[format],
+              FileManager.default.fileExists(atPath: source.path) else {
+            status = "没有找到可导出的 \(format.fileExtension.uppercased()) 成品"
+            return
+        }
+        isDeliveringExport = true
+        status = "正在导出 \(format.fileExtension.uppercased()) 成品…"
+        let owner = self
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try AudioExporter().deliverExisting(source, to: destination, format: format)
+                Task { @MainActor [weak owner] in
+                    owner?.isDeliveringExport = false
+                    owner?.status = "成品已导出到“\(destination.lastPathComponent)”"
+                }
+            } catch {
+                Task { @MainActor [weak owner] in
+                    owner?.isDeliveringExport = false
+                    owner?.status = "成品导出失败：\(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
     func deleteProject(_ project: NarrationProject, defaultVoiceID: String) {
         do {
             try store.deleteProject(id: project.id)
@@ -702,7 +729,7 @@ final class NarrationWorkspaceModel: ObservableObject {
     private func beginImport(_ request: ContentImportRequest) {
         guard !isImportingSource, !isGenerating, !isFinishing else { return }
         isImportingSource = true
-        status = "正在把内容保存到本地听读箱…"
+        status = "正在把内容保存到本地作品库…"
         let coordinator = importCoordinator
         let voiceID = draftVoiceID
         activeImportTask = Task { [weak self] in
@@ -798,7 +825,7 @@ final class NarrationWorkspaceModel: ObservableObject {
             selectedProject = reloaded
             reloadProjects(selecting: id)
         } catch {
-            status = "项目状态刷新失败：\(error.localizedDescription)"
+            status = "作品状态刷新失败：\(error.localizedDescription)"
         }
     }
 

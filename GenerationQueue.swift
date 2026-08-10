@@ -245,7 +245,7 @@ enum GenerationQueueError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .alreadyRunning:
-            return "这个项目正在生成中"
+            return "这个声音作品正在制作中"
         case .engineUnavailable(let reason):
             return "本地语音资源未就绪：\(reason)"
         case .invalidAudio:

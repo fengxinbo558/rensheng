@@ -229,7 +229,7 @@ private enum AppSection: String, CaseIterable, Identifiable {
     case quick
 
     var id: String { rawValue }
-    var label: String { self == .projects ? "朗读项目" : "快速生成" }
+    var label: String { self == .projects ? "声音作品" : "快速生成" }
 }
 
 struct ContentView: View {
@@ -268,7 +268,7 @@ struct ContentView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 290)
-                .accessibilityLabel("选择朗读项目或快速生成")
+                .accessibilityLabel("选择声音作品或快速生成")
                 Spacer()
                 Label("所有处理均在本机完成", systemImage: "lock.fill")
                     .font(.caption)

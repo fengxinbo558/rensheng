@@ -8,9 +8,9 @@ struct ProjectListView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("我的听读")
+                Text("作品库")
                     .font(.system(size: 21, weight: .semibold, design: .rounded))
-                Text("文章与音频都只保存在本机")
+                Text("原稿、声音和成品都在本机")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -18,20 +18,20 @@ struct ProjectListView: View {
             Button {
                 model.startNewProject(defaultVoiceID: defaultVoiceID)
             } label: {
-                Label("新建听读", systemImage: "plus")
+                Label("新建声音作品", systemImage: "plus")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(model.isImportingSource)
-            .help(model.isImportingSource ? "当前内容导入完成后即可新建" : "新建一份听读")
+            .help(model.isImportingSource ? "当前内容导入完成后即可新建" : "新建一份声音作品")
 
             if model.projects.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Image(systemName: "text.book.closed")
                         .font(.title2)
                         .foregroundStyle(Color(red: 0.18, green: 0.41, blue: 0.78))
-                    Text("还没有保存的项目")
+                    Text("还没有声音作品")
                         .font(.headline)
                     Text("从右侧粘贴文字或放入 PDF。")
                         .font(.caption)
@@ -80,7 +80,7 @@ struct ProjectListView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("打开项目：\(project.name)，已完成 \(completed) 段")
+            .accessibilityLabel("打开声音作品：\(project.name)，已完成 \(completed) 段")
 
             Button(role: .destructive) {
                 onDelete(project)
@@ -88,7 +88,7 @@ struct ProjectListView: View {
                 Image(systemName: "trash")
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel("删除项目：\(project.name)")
+            .accessibilityLabel("删除声音作品：\(project.name)")
         }
         .padding(11)
         .background(
@@ -116,7 +116,7 @@ struct ProjectListView: View {
                 return String(format: "继续 %d:%02d", seconds / 60, seconds % 60)
             }
             return project.segments.isEmpty
-                ? "等待生成"
+                ? "等待制作"
                 : "\(completed) / \(project.segments.count) 段"
         }
     }
