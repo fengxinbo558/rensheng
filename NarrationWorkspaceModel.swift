@@ -225,6 +225,9 @@ final class NarrationWorkspaceModel: ObservableObject {
             || selectedProject?.sourceText != draftText
             || selectedProject?.voiceID != draftVoiceID
             || selectedProject?.segments.isEmpty == true
+            || selectedProject?.needsSpokenScriptRefresh(
+                currentVersion: spokenScriptDirector.version
+            ) == true
         if draftChanged, !analyzeAndSave() { return }
 
         if allSegmentsCompleted {

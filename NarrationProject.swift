@@ -79,7 +79,7 @@ struct NarrationProject: Identifiable, Codable, Hashable {
         sourceText: String,
         voiceID: String,
         scriptMode: NarrationScriptMode = .spoken,
-        scriptVersion: String = "rule-zh-v1",
+        scriptVersion: String = RuleSpokenScriptDirector.currentVersion,
         outline: [NarrationOutlineItem] = [],
         scriptState: NarrationScriptState = .pending,
         scriptErrorSummary: String? = nil,
@@ -111,6 +111,12 @@ struct NarrationProject: Identifiable, Codable, Hashable {
                 invalidateChanged: invalidateChanged
             )
         }
+    }
+
+    func needsSpokenScriptRefresh(currentVersion: String) -> Bool {
+        scriptMode == .spoken
+            && scriptState != .pending
+            && scriptVersion != currentVersion
     }
 
     func migratedToCurrentVersion() -> NarrationProject {

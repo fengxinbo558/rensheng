@@ -137,6 +137,30 @@ struct ProjectMigrationSelfTest {
         )
         try migrationExpect(newProject.scriptMode == .spoken, "新项目应默认自然讲解")
         try migrationExpect(newProject.scriptState == .pending, "新项目应等待口语整理")
+        try migrationExpect(
+            !newProject.needsSpokenScriptRefresh(
+                currentVersion: RuleSpokenScriptDirector.currentVersion
+            ),
+            "还没有生成口语稿的新项目不应标记为过期"
+        )
+
+        var outdated = newProject
+        outdated.scriptState = .completed
+        outdated.scriptVersion = "rule-zh-v1"
+        try migrationExpect(
+            outdated.needsSpokenScriptRefresh(
+                currentVersion: RuleSpokenScriptDirector.currentVersion
+            ),
+            "旧自然讲解项目应在下次生成前更新分段规则"
+        )
+
+        outdated.scriptMode = .verbatim
+        try migrationExpect(
+            !outdated.needsSpokenScriptRefresh(
+                currentVersion: RuleSpokenScriptDirector.currentVersion
+            ),
+            "逐字朗读项目不应被自动改成新口语分段"
+        )
 
         print("ProjectMigrationSelfTest: PASS")
     }

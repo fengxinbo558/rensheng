@@ -24,7 +24,8 @@ protocol SpokenScriptDirecting {
 }
 
 struct RuleSpokenScriptDirector: SpokenScriptDirecting {
-    let version = "rule-zh-continuous-v2"
+    static let currentVersion = "rule-zh-continuous-v2"
+    let version = Self.currentVersion
     private let validator = SpokenScriptValidator()
 
     func prepare(sourceText: String, mode: NarrationScriptMode) throws -> SpokenScriptResult {
