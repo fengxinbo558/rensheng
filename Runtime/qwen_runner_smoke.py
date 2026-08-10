@@ -10,6 +10,8 @@ import sys
 import tempfile
 import unittest
 
+import qwen_runner
+
 
 RUNNER = Path(__file__).with_name("qwen_runner.py")
 
@@ -27,6 +29,31 @@ class QwenRunnerContractTests(unittest.TestCase):
         result = self.run_runner()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("required", result.stderr.lower())
+
+    def test_speaker_embedding_mode_does_not_feed_reference_words_back_to_model(self) -> None:
+        arguments = qwen_runner.build_parser().parse_args(
+            [
+                "--model-dir",
+                "/tmp/model",
+                "--reference-audio",
+                "/tmp/reference.wav",
+                "--reference-text",
+                "参考录音最后两个字是语音。",
+                "--text",
+                "正文从这里开始。",
+                "--output",
+                "/tmp/output.wav",
+            ]
+        )
+
+        self.assertEqual(arguments.voice_conditioning, "speaker_embedding")
+        self.assertIsNone(qwen_runner.reference_text_for_model(arguments))
+
+        arguments.voice_conditioning = "icl"
+        self.assertEqual(
+            qwen_runner.reference_text_for_model(arguments),
+            "参考录音最后两个字是语音。",
+        )
 
     def test_validate_only_accepts_project_relative_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

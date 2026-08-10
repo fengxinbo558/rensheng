@@ -68,7 +68,8 @@ struct ProjectEditorView: View {
             SourceImportView(
                 isBusy: model.isImportingSource,
                 onImportText: { model.importPlainText($0) },
-                onImportPDF: { model.importPDF($0) }
+                onImportPDF: { model.importPDF($0) },
+                onImportWebPage: { model.importWebPage($0) }
             )
 
             HStack {

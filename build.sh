@@ -38,7 +38,10 @@ for required_path in \
   "${MP3_ENCODER_SOURCE}/COPYING" \
   "${MP3_ENCODER_SOURCE}/lame-3.100.tar.gz" \
   "${THIRD_PARTY_SOURCE}/OpenNotebook/LICENSE" \
-  "${THIRD_PARTY_SOURCE}/OpenNotebook/NOTICE.md"; do
+  "${THIRD_PARTY_SOURCE}/OpenNotebook/NOTICE.md" \
+  "${THIRD_PARTY_SOURCE}/Readability/Readability.js" \
+  "${THIRD_PARTY_SOURCE}/Readability/LICENSE.md" \
+  "${THIRD_PARTY_SOURCE}/Readability/NOTICE.md"; do
   if [[ ! -e "${required_path}" ]]; then
     print -u2 -- "缺少应用资源：${required_path}"
     exit 1

@@ -6,10 +6,12 @@ struct SourceImportView: View {
     let isBusy: Bool
     let onImportText: (String) -> Void
     let onImportPDF: (URL) -> Void
+    let onImportWebPage: (URL) -> Void
 
     @State private var showingPDFPicker = false
     @State private var localMessage: String?
     @State private var isDropTargeted = false
+    @State private var webAddress = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -62,6 +64,20 @@ struct SourceImportView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
             }
+
+            HStack(spacing: 10) {
+                TextField("粘贴网页链接", text: $webAddress)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("网页链接")
+                    .accessibilityHint("网页获取需要联网，导入后的生成和保存仍在本机完成")
+                    .onSubmit { importWebPage() }
+                Button("导入网页") { importWebPage() }
+                    .disabled(isBusy || webAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            Text("网页获取阶段需要联网；正文提取、语音生成和项目保存仍在本机完成。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
 
             if let localMessage {
                 Label(localMessage, systemImage: "exclamationmark.circle.fill")
@@ -125,5 +141,21 @@ struct SourceImportView: View {
         }
         localMessage = nil
         onImportText(text)
+    }
+
+    private func importWebPage() {
+        let clean = webAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        let normalized = clean.contains("://") ? clean : "https://\(clean)"
+        guard let url = URL(string: normalized),
+              let scheme = url.scheme?.lowercased(),
+              (scheme == "http" || scheme == "https"),
+              url.host?.isEmpty == false else {
+            localMessage = "请输入正确的网页链接"
+            return
+        }
+        localMessage = nil
+        webAddress = ""
+        onImportWebPage(url)
     }
 }

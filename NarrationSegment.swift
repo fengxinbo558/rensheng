@@ -277,6 +277,7 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         voiceID: String
     ) -> String {
         let value = [
+            synthesisFingerprintVersion,
             text,
             kind.rawValue,
             expression.rawValue,
@@ -285,6 +286,10 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         ].joined(separator: "\u{1f}")
         return hash(value)
     }
+
+    // Bump whenever the acoustic conditioning contract changes. This prevents
+    // cached ICL audio with leaked reference-tail words from being replayed.
+    private static let synthesisFingerprintVersion = "qwen-speaker-embedding-v1"
 
     private static func hash(_ value: String) -> String {
         var result: UInt64 = 14_695_981_039_346_656_037

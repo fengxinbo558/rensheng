@@ -3,6 +3,7 @@ import Foundation
 enum ContentImportRequest: Equatable, Sendable {
     case plainText(text: String, title: String?)
     case pdf(URL)
+    case webPage(URL)
 }
 
 struct ImportedContent: Equatable, Sendable {
@@ -22,6 +23,13 @@ enum ContentImportError: LocalizedError, Equatable {
     case unreadablePDF
     case passwordProtectedPDF
     case noExtractableText
+    case invalidWebURL
+    case webRequestFailed
+    case webResponseTooLarge
+    case unsupportedWebContent
+    case unreadableWebText
+    case articleExtractionFailed
+    case readabilityUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -39,6 +47,20 @@ enum ContentImportError: LocalizedError, Equatable {
             return "这个 PDF 受到密码保护，当前版本暂时无法导入"
         case .noExtractableText:
             return "这个 PDF 没有可选择的文字，扫描版 PDF 将在后续版本支持"
+        case .invalidWebURL:
+            return "请输入以 http:// 或 https:// 开头的网页链接"
+        case .webRequestFailed:
+            return "没有获取到这个网页；网页获取需要联网，导入后仍在本机处理"
+        case .webResponseTooLarge:
+            return "这个网页文件过大，当前版本暂时无法导入"
+        case .unsupportedWebContent:
+            return "这个链接不是普通网页，当前版本无法提取正文"
+        case .unreadableWebText:
+            return "这个网页使用了当前版本无法识别的文字编码"
+        case .articleExtractionFailed:
+            return "没有从这个网页中找到连续正文，可以改为复制文字后导入"
+        case .readabilityUnavailable:
+            return "网页正文提取组件不完整，请重新安装应用"
         }
     }
 }

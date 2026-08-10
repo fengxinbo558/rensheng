@@ -129,6 +129,10 @@ final class NarrationWorkspaceModel: ObservableObject {
         beginImport(.pdf(url))
     }
 
+    func importWebPage(_ url: URL) {
+        beginImport(.webPage(url))
+    }
+
     func saveProjectName() {
         guard var project = selectedProject else { return }
         project.name = resolvedName()
@@ -710,6 +714,8 @@ final class NarrationWorkspaceModel: ObservableObject {
                         securityScopedURL = nil
                     case .pdf(let url):
                         securityScopedURL = url
+                    case .webPage:
+                        securityScopedURL = nil
                     }
                     let didAccess = securityScopedURL?.startAccessingSecurityScopedResource() ?? false
                     defer {
@@ -725,9 +731,14 @@ final class NarrationWorkspaceModel: ObservableObject {
                 self.isImportingSource = false
                 self.reloadProjects(selecting: project.id)
                 self.selectProject(project)
-                self.status = project.source.kind == .pdf
-                    ? "PDF 已保存在本机，检查文字后即可生成"
-                    : "文字已保存在本机，选择音色后即可生成"
+                switch project.source.kind {
+                case .pdf:
+                    self.status = "PDF 已保存在本机，检查文字后即可生成"
+                case .webPage:
+                    self.status = "网页正文已提取并保存在本机，检查后即可生成"
+                default:
+                    self.status = "文字已保存在本机，选择音色后即可生成"
+                }
             } catch is CancellationError {
                 guard let self else { return }
                 self.activeImportTask = nil

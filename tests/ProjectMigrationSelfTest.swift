@@ -171,6 +171,42 @@ struct ProjectMigrationSelfTest {
             "逐字朗读项目不应被自动改成新口语分段"
         )
 
+        var oldConditioning = NarrationProject(
+            name: "旧克隆方式",
+            sourceText: "正文第一个字必须保留。",
+            voiceID: "voice-old-conditioning"
+        )
+        oldConditioning.segments = [
+            NarrationSegment(
+                order: 0,
+                text: "正文第一个字必须保留。",
+                kind: .explanation,
+                voiceID: oldConditioning.voiceID
+            )
+        ]
+        let staleCandidate = NarrationAudioCandidate(
+            id: "stale-icl-audio",
+            relativePath: "segments/stale.wav",
+            inputFingerprint: "legacy-icl-conditioning",
+            engineName: "自然人声",
+            durationSeconds: 2
+        )
+        oldConditioning.segments[0].inputFingerprint = "legacy-icl-conditioning"
+        oldConditioning.segments[0].generationState = .completed
+        oldConditioning.segments[0].candidates = [staleCandidate]
+        oldConditioning.segments[0].selectedCandidateID = staleCandidate.id
+        try store.save(oldConditioning)
+
+        let refreshedConditioning = try store.loadProject(id: oldConditioning.id)
+        try migrationExpect(
+            refreshedConditioning.segments[0].generationState == .pending,
+            "旧 ICL 音频应在无尾音模式启用后等待重新生成"
+        )
+        try migrationExpect(
+            refreshedConditioning.segments[0].candidates.isEmpty,
+            "带参考尾音的旧候选不应继续播放"
+        )
+
         print("ProjectMigrationSelfTest: PASS")
     }
 }

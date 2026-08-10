@@ -60,6 +60,15 @@ def build_parser(worker_mode: bool = False) -> argparse.ArgumentParser:
     parser.add_argument("--repetition-penalty", type=float, default=1.5)
     parser.add_argument("--max-tokens", type=int, default=4096)
     parser.add_argument("--max-output-seconds", type=float)
+    parser.add_argument(
+        "--voice-conditioning",
+        choices=("speaker_embedding", "icl"),
+        default="speaker_embedding",
+        help=(
+            "speaker_embedding avoids ICL reference-tail echoes; "
+            "icl preserves the legacy full-reference continuation"
+        ),
+    )
     parser.add_argument("--validate-only", action="store_true")
     return parser
 
@@ -207,6 +216,19 @@ def load_qwen_model(arguments: argparse.Namespace) -> tuple[Any, float]:
     return model, time.monotonic() - load_started
 
 
+def reference_text_for_model(arguments: argparse.Namespace) -> str | None:
+    """Keep the transcript for profile validation, but not for clean x-vector cloning.
+
+    Qwen ICL conditioning can repeat the last words of the reference transcript at
+    the beginning of every generated segment. The 0.6B MLX model has a dedicated
+    speaker encoder, so the default path uses that embedding without feeding the
+    reference words into the generation context.
+    """
+    if arguments.voice_conditioning == "speaker_embedding":
+        return None
+    return arguments.reference_text.strip()
+
+
 def generate_audio_with_model(
     arguments: argparse.Namespace,
     model: Any,
@@ -234,7 +256,7 @@ def generate_audio_with_model(
             text=arguments.text.strip(),
             voice=None,
             ref_audio=reference,
-            ref_text=arguments.reference_text.strip(),
+            ref_text=reference_text_for_model(arguments),
             lang_code="chinese",
             temperature=arguments.temperature,
             top_k=arguments.top_k,
@@ -279,6 +301,7 @@ def generate_audio_with_model(
         "qwenPeakMemoryGB": peak_memory_gb,
         "rawDuration": float(audio.size / sample_rate),
         "safetyLimitSeconds": safety_limit_seconds,
+        "voiceConditioning": arguments.voice_conditioning,
     }
 
     del results
@@ -489,6 +512,7 @@ def reference_cache_key(arguments: argparse.Namespace) -> tuple[Any, ...]:
         stat.st_size,
         stat.st_mtime_ns,
         arguments.reference_text.strip(),
+        arguments.voice_conditioning,
         arguments.reference_start_seconds,
         arguments.reference_duration_seconds,
         arguments.reference_peak_dbfs,

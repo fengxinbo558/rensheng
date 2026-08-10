@@ -4,17 +4,20 @@ final class ContentImportCoordinator: @unchecked Sendable {
     private let store: ProjectStore
     private let plainTextImporter: any ContentImporting
     private let pdfImporter: any ContentImporting
+    private let webArticleImporter: any ContentImporting
     private let fileManager: FileManager
 
     init(
         store: ProjectStore,
         plainTextImporter: any ContentImporting = PlainTextImporter(),
         pdfImporter: any ContentImporting = PDFTextImporter(),
+        webArticleImporter: any ContentImporting = WebArticleImporter(),
         fileManager: FileManager = .default
     ) {
         self.store = store
         self.plainTextImporter = plainTextImporter
         self.pdfImporter = pdfImporter
+        self.webArticleImporter = webArticleImporter
         self.fileManager = fileManager
     }
 
@@ -73,6 +76,8 @@ final class ContentImportCoordinator: @unchecked Sendable {
             return plainTextImporter
         case .pdf:
             return pdfImporter
+        case .webPage:
+            return webArticleImporter
         }
     }
 
@@ -86,6 +91,8 @@ final class ContentImportCoordinator: @unchecked Sendable {
             let title = url.deletingPathExtension().lastPathComponent
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             return title.isEmpty ? "等待导入的 PDF" : title
+        case .webPage(let url):
+            return url.host ?? "等待导入的网页"
         }
     }
 
@@ -100,6 +107,12 @@ final class ContentImportCoordinator: @unchecked Sendable {
                 title: title,
                 originalURLString: url.standardizedFileURL.absoluteString,
                 managedFileRelativePath: "source/original.pdf"
+            )
+        case .webPage(let url):
+            return NarrationSource(
+                kind: .webPage,
+                title: title,
+                originalURLString: url.absoluteString
             )
         }
     }

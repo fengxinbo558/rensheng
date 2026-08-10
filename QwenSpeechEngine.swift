@@ -219,6 +219,7 @@ private final class QwenWorkerConnection: @unchecked Sendable {
             "--deepfilter-model", resources.deepFilterModel.path,
             "--deepfilter-wet", "0.0",
             "--streaming-interval", "2",
+            "--voice-conditioning", "speaker_embedding",
         ]
         var environment = ProcessInfo.processInfo.environment
         environment["PYTHONDONTWRITEBYTECODE"] = "1"

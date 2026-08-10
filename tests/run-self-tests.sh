@@ -4,6 +4,14 @@ set -euo pipefail
 TESTS_DIR="${0:A:h}"
 PROJECT_DIR="${TESTS_DIR:h}"
 SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+QWEN_PYTHON="${PROJECT_DIR:h:h}/qwen3-mlx-python-probe/.venv/bin/python"
+
+if [[ ! -x "${QWEN_PYTHON}" ]]; then
+  print -u2 -- "缺少本地自然人声测试运行程序：${QWEN_PYTHON}"
+  exit 1
+fi
+
+"${QWEN_PYTHON}" "${PROJECT_DIR}/Runtime/qwen_runner_smoke.py"
 
 run_test() {
   local test_source="$1"
@@ -29,6 +37,8 @@ run_test() {
     "${PROJECT_DIR}/PlainTextImporter.swift" \
     "${PROJECT_DIR}/PDFTextImporter.swift" \
     "${PROJECT_DIR}/ContentImportCoordinator.swift" \
+    "${PROJECT_DIR}/WebArticleExtractionHost.swift" \
+    "${PROJECT_DIR}/WebArticleImporter.swift" \
     "${PROJECT_DIR}/SpokenScriptValidator.swift" \
     "${PROJECT_DIR}/SpokenScriptDirector.swift" \
     "${PROJECT_DIR}/ProjectStore.swift" \
@@ -45,12 +55,14 @@ run_test() {
     "${test_source}" \
     -framework PDFKit \
     -framework CoreText \
+    -framework WebKit \
     -o "${test_root}/${test_name}"
 
   LOCAL_AUDIO_PROBE_TEST_ROOT="${test_root}" \
   LOCAL_AUDIO_PROBE_APP_SUPPORT="${test_root}/ApplicationSupport" \
   LOCAL_AUDIO_PROBE_OUTPUT_DIR="${test_root}/Output" \
   LOCAL_AUDIO_PROBE_TEST_FIXTURES="${TESTS_DIR}/fixtures" \
+  LOCAL_AUDIO_PROBE_PROJECT_DIR="${PROJECT_DIR}" \
     "${test_root}/${test_name}"
 }
 
@@ -65,6 +77,7 @@ run_test "${TESTS_DIR}/ProjectMigrationSelfTest.swift"
 run_test "${TESTS_DIR}/ContentImporterSelfTest.swift"
 run_test "${TESTS_DIR}/PDFTextImporterSelfTest.swift"
 run_test "${TESTS_DIR}/ContentImportCoordinatorSelfTest.swift"
+run_test "${TESTS_DIR}/WebArticleImporterSelfTest.swift"
 run_test "${TESTS_DIR}/SpokenScriptValidatorSelfTest.swift"
 run_test "${TESTS_DIR}/SpokenScriptDirectorSelfTest.swift"
 run_test "${TESTS_DIR}/NarrationDirectorSelfTest.swift"

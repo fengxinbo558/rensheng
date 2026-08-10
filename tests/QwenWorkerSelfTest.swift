@@ -54,8 +54,10 @@ parser.add_argument("--model-dir", required=True)
 parser.add_argument("--deepfilter-model")
 parser.add_argument("--deepfilter-wet")
 parser.add_argument("--streaming-interval")
+parser.add_argument("--voice-conditioning", choices=["speaker_embedding", "icl"])
 args = parser.parse_args()
 model = Path(args.model_dir)
+(model / "conditioning.txt").write_text(args.voice_conditioning or "missing", encoding="utf-8")
 with (model / "starts.txt").open("a", encoding="utf-8") as handle:
     handle.write(f"{os.getpid()}\n")
 print(json.dumps({"event": "worker_ready", "sampleRate": 24000}), flush=True)
@@ -123,6 +125,14 @@ for line in sys.stdin:
             encoding: .utf8
         ).split(whereSeparator: { $0.isNewline })
         try workerExpect(starts.count == 1, "连续生成两段时不应重启 Worker")
+        let conditioning = try String(
+            contentsOf: model.appendingPathComponent("conditioning.txt"),
+            encoding: .utf8
+        )
+        try workerExpect(
+            conditioning == "speaker_embedding",
+            "自然人声应使用不会复读参考尾音的音色嵌入模式"
+        )
         let requests = try String(
             contentsOf: model.appendingPathComponent("requests.txt"),
             encoding: .utf8
