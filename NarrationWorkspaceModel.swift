@@ -16,14 +16,17 @@ final class NarrationWorkspaceModel: ObservableObject {
 
     private let store: ProjectStore
     private let director = NarrationDirector()
+    private let spokenScriptDirector: any SpokenScriptDirecting
     let playback: PlaybackController
     private var activeQueue: GenerationQueue?
 
     init(
         store: ProjectStore = ProjectStore(),
+        spokenScriptDirector: any SpokenScriptDirecting = RuleSpokenScriptDirector(),
         playback: PlaybackController
     ) {
         self.store = store
+        self.spokenScriptDirector = spokenScriptDirector
         self.playback = playback
         reloadProjects()
         if let mostRecentProject = projects.first {
@@ -142,15 +145,22 @@ final class NarrationWorkspaceModel: ObservableObject {
     }
 
     @discardableResult
-    func analyzeAndSave() -> Bool {
+    func analyzeAndSave(mode requestedMode: NarrationScriptMode? = nil) -> Bool {
         guard canAnalyze else { return false }
         do {
-            let analyzed = try director.analyze(text: draftText, voiceID: draftVoiceID)
+            let mode = requestedMode ?? selectedProject?.scriptMode ?? .spoken
+            let script = try spokenScriptDirector.prepare(sourceText: draftText, mode: mode)
+            let analyzed = director.analyze(script: script, voiceID: draftVoiceID)
             var project: NarrationProject
             if var existing = selectedProject {
                 existing.name = resolvedName()
                 existing.sourceText = draftText
                 existing.voiceID = draftVoiceID
+                existing.scriptMode = mode
+                existing.scriptVersion = script.version
+                existing.outline = script.outline
+                existing.scriptState = script.usedFallback ? .fallback : .completed
+                existing.scriptErrorSummary = script.warning
                 existing.updatedAt = Date()
                 existing.segments = merge(analyzed: analyzed, with: existing.segments, voiceID: draftVoiceID)
                 existing.refreshSegmentFingerprints(invalidateChanged: true)
@@ -162,6 +172,11 @@ final class NarrationWorkspaceModel: ObservableObject {
                     sourceText: draftText,
                     voiceID: draftVoiceID
                 )
+                project.scriptMode = mode
+                project.scriptVersion = script.version
+                project.outline = script.outline
+                project.scriptState = script.usedFallback ? .fallback : .completed
+                project.scriptErrorSummary = script.warning
                 project.segments = analyzed
                 project.updatedAt = Date()
             }
@@ -170,11 +185,37 @@ final class NarrationWorkspaceModel: ObservableObject {
             draftName = project.name
             finalAudioURLs = [:]
             reloadProjects(selecting: project.id)
-            status = "已分析为 \(project.segments.count) 个朗读段落，可直接生成全文"
+            if script.usedFallback {
+                status = script.warning ?? "自然整理未通过检查，已安全改为逐字朗读"
+            } else {
+                status = "已整理为 \(project.segments.count) 个自然短句，可直接生成全文"
+            }
             return true
         } catch {
             status = "分析失败：\(error.localizedDescription)"
             return false
+        }
+    }
+
+    func updateScriptMode(_ mode: NarrationScriptMode) {
+        guard !isGenerating, !isFinishing else { return }
+        guard selectedProject?.scriptMode != mode else { return }
+        if analyzeAndSave(mode: mode) {
+            if selectedProject?.scriptState == .fallback {
+                status = selectedProject?.scriptErrorSummary
+                    ?? "自然整理未通过检查，已安全改为逐字朗读"
+            } else {
+                status = mode == .spoken
+                    ? "已切换为自然讲解；原文仍完整保留"
+                    : "已切换为逐字朗读"
+            }
+        }
+    }
+
+    func reprepareScript() {
+        guard let mode = selectedProject?.scriptMode else { return }
+        if analyzeAndSave(mode: mode) {
+            status = mode == .spoken ? "口语稿已重新整理" : "逐字朗读段落已重新整理"
         }
     }
 
@@ -249,7 +290,8 @@ final class NarrationWorkspaceModel: ObservableObject {
         guard var project = selectedProject,
               let index = project.segments.firstIndex(where: { $0.id == id }) else { return }
         guard project.segments[index].text != clean else { return }
-        project.segments[index].text = clean
+        project.segments[index].spokenText = clean
+        project.segments[index].refreshScriptFingerprint(scriptVersion: project.scriptVersion)
         project.segments[index].refreshFingerprint(
             voiceID: project.voiceID,
             invalidateChanged: true
@@ -265,6 +307,31 @@ final class NarrationWorkspaceModel: ObservableObject {
             status = "第 \(project.segments[index].order + 1) 段文字已更新，只需重做这一段"
         } catch {
             status = "朗读文字保存失败：\(error.localizedDescription)"
+        }
+    }
+
+    func restoreSegmentSource(id: String) {
+        guard var project = selectedProject,
+              let index = project.segments.firstIndex(where: { $0.id == id }) else { return }
+        let source = project.segments[index].sourceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !source.isEmpty, project.segments[index].spokenText != source else { return }
+        project.segments[index].spokenText = source
+        project.segments[index].refreshScriptFingerprint(scriptVersion: project.scriptVersion)
+        project.segments[index].refreshFingerprint(
+            voiceID: project.voiceID,
+            invalidateChanged: true
+        )
+        project.exports = []
+        project.updatedAt = Date()
+        do {
+            try store.save(project)
+            selectedProject = project
+            finalAudioURLs = [:]
+            if playback.contextID == project.id { playback.stopAndUnload() }
+            reloadProjects(selecting: project.id)
+            status = "第 \(project.segments[index].order + 1) 段已恢复原文，只需重做这一段"
+        } catch {
+            status = "恢复原文失败：\(error.localizedDescription)"
         }
     }
 
@@ -348,18 +415,12 @@ final class NarrationWorkspaceModel: ObservableObject {
         automaticallyFinish: Bool
     ) {
         guard canGenerate, let projectID = selectedProject?.id else { return }
-        let expressiveEngine = LocalExpressiveSpeechEngine()
-        let engine: SpeechEngine
-        if expressiveEngine.isAvailable {
-            engine = expressiveEngine
-        } else {
-            let engineChoice = DeviceSynthesisPolicy.recommendedEngine(
-                naturalResourcesAvailable: RuntimeLocator.qwen.isAvailable
-            )
-            engine = engineChoice == .natural
-                ? QwenSpeechEngine()
-                : ZipVoiceSpeechEngine()
-        }
+        let engineChoice = DeviceSynthesisPolicy.recommendedEngine(
+            naturalResourcesAvailable: RuntimeLocator.qwen.isAvailable
+        )
+        let engine: SpeechEngine = engineChoice == .natural
+            ? QwenSpeechEngine()
+            : ZipVoiceSpeechEngine()
         let queue = GenerationQueue(store: store, engine: engine)
         activeQueue = queue
         isGenerating = true
@@ -535,11 +596,15 @@ final class NarrationWorkspaceModel: ObservableObject {
     ) -> [NarrationSegment] {
         let oldByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
         return analyzed.map { fresh in
-            guard var previous = oldByID[fresh.id], previous.text == fresh.text else {
+            guard var previous = oldByID[fresh.id],
+                  previous.sourceText == fresh.sourceText,
+                  previous.spokenText == fresh.spokenText else {
                 return fresh
             }
             previous.order = fresh.order
             previous.kind = fresh.kind
+            previous.speakerRole = fresh.speakerRole
+            previous.scriptFingerprint = fresh.scriptFingerprint
             previous.refreshFingerprint(voiceID: voiceID, invalidateChanged: true)
             return previous
         }

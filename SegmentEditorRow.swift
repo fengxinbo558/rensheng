@@ -4,8 +4,7 @@ struct SegmentEditorRow: View {
     let segment: NarrationSegment
     let isBusy: Bool
     let onTextSave: (String) -> Void
-    let onExpression: (NarrationExpression) -> Void
-    let onExpressionIntensity: (ExpressionIntensity) -> Void
+    let onRestoreSource: () -> Void
     let onSpeed: (Double) -> Void
     let onPause: (NarrationPause) -> Void
     let onCandidate: (String) -> Void
@@ -19,8 +18,7 @@ struct SegmentEditorRow: View {
         segment: NarrationSegment,
         isBusy: Bool,
         onTextSave: @escaping (String) -> Void,
-        onExpression: @escaping (NarrationExpression) -> Void,
-        onExpressionIntensity: @escaping (ExpressionIntensity) -> Void,
+        onRestoreSource: @escaping () -> Void,
         onSpeed: @escaping (Double) -> Void,
         onPause: @escaping (NarrationPause) -> Void,
         onCandidate: @escaping (String) -> Void,
@@ -30,21 +28,37 @@ struct SegmentEditorRow: View {
         self.segment = segment
         self.isBusy = isBusy
         self.onTextSave = onTextSave
-        self.onExpression = onExpression
-        self.onExpressionIntensity = onExpressionIntensity
+        self.onRestoreSource = onRestoreSource
         self.onSpeed = onSpeed
         self.onPause = onPause
         self.onCandidate = onCandidate
         self.onRegenerate = onRegenerate
         self.onPlay = onPlay
-        _editedText = State(initialValue: segment.text)
+        _editedText = State(initialValue: segment.spokenText)
     }
 
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("对应原文")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(segment.sourceText)
+                        .font(.system(size: 13.5))
+                        .lineSpacing(3)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(
+                            Color(red: 0.925, green: 0.949, blue: 0.978),
+                            in: RoundedRectangle(cornerRadius: 8)
+                        )
+                        .accessibilityLabel("第 \(segment.order + 1) 段对应原文")
+                }
+
                 VStack(alignment: .leading, spacing: 7) {
-                    Text("朗读文字")
+                    Text("实际朗读")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     TextEditor(text: $editedText)
@@ -54,60 +68,22 @@ struct SegmentEditorRow: View {
                         .padding(8)
                         .frame(minHeight: 72)
                         .background(Color.black.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
+                        .accessibilityLabel("第 \(segment.order + 1) 段实际朗读文字")
                     HStack {
-                        Text("用于修正人名、多音字或专业词读法")
+                        Text("可以修正读法；修改只会重做这一段")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Button("保存文字") { onTextSave(editedText) }
+                        Button("恢复原文") { onRestoreSource() }
+                            .disabled(isBusy || segment.spokenText == segment.sourceText)
+                            .help("用上方对应原文替换实际朗读文字")
+                        Button("保存朗读稿") { onTextSave(editedText) }
                             .disabled(
                                 isBusy
                                     || editedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                    || editedText == segment.text
+                                    || editedText == segment.spokenText
                             )
                     }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 12) {
-                        Picker(
-                            "表达情绪",
-                            selection: Binding(
-                                get: { segment.expression.currentValue },
-                                set: onExpression
-                            )
-                        ) {
-                            ForEach(NarrationExpression.userSelectableCases) { item in
-                                Text(item.label).tag(item)
-                            }
-                        }
-                        .disabled(isBusy)
-
-                        if segment.expression.supportsIntensity {
-                            Picker(
-                                "情绪强度",
-                                selection: Binding(
-                                    get: { segment.expressionIntensity },
-                                    set: onExpressionIntensity
-                                )
-                            ) {
-                                ForEach(ExpressionIntensity.allCases) { item in
-                                    Text(item.label).tag(item)
-                                }
-                            }
-                            .disabled(isBusy)
-                        }
-                        Spacer()
-                    }
-                    .controlSize(.small)
-
-                    Text(
-                        segment.expression.supportsIntensity
-                            ? "默认使用轻微情绪；只有需要时才提高强度。修改后只重做这一段。"
-                            : "自然表达会贴近录音语气，不额外表演。"
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 }
 
                 HStack(spacing: 14) {
@@ -179,7 +155,7 @@ struct SegmentEditorRow: View {
                             .foregroundStyle(kindColor)
                         stateLabel
                     }
-                    Text(segment.text)
+                    Text(segment.spokenText)
                         .font(.system(size: 14.5))
                         .lineLimit(isExpanded ? 3 : 1)
                         .foregroundStyle(.primary)
@@ -196,7 +172,7 @@ struct SegmentEditorRow: View {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(Color.black.opacity(0.07), lineWidth: 1)
         }
-        .onChange(of: segment.text) { _, newText in editedText = newText }
+        .onChange(of: segment.spokenText) { _, newText in editedText = newText }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("第 \(segment.order + 1) 段，\(segment.kind.label)")
     }

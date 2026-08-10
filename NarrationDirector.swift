@@ -54,6 +54,31 @@ struct NarrationDirector {
         }
     }
 
+    func analyze(script: SpokenScriptResult, voiceID: String) -> [NarrationSegment] {
+        script.segments.map { item in
+            let standalone = item.spokenText.count <= 28
+                && !item.spokenText.contains(where: { "。！？!?；;".contains($0) })
+            let kind = NarrationRules.classify(
+                item.spokenText,
+                standaloneLine: standalone
+            )
+            let defaults = NarrationRules.defaults(for: kind)
+            return NarrationSegment(
+                id: item.id,
+                order: item.order,
+                sourceText: item.sourceText,
+                spokenText: item.spokenText,
+                speakerRole: item.speakerRole,
+                scriptVersion: script.version,
+                kind: kind,
+                expression: .natural,
+                speedFactor: defaults.speedFactor,
+                pause: defaults.pause,
+                voiceID: voiceID
+            )
+        }
+    }
+
     private func splitSentences(_ text: String) -> [String] {
         let sentenceEndings: Set<Character> = ["。", "！", "？", "!", "?", "；", ";"]
         var results: [String] = []

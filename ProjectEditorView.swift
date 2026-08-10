@@ -68,6 +68,9 @@ struct ProjectEditorView: View {
             HStack {
                 Text("要朗读的内容")
                     .font(.headline)
+                Text("默认整理成自然口语，原文始终保留")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Text(model.characterCountLabel)
                     .font(.caption.monospacedDigit())
@@ -198,6 +201,39 @@ struct ProjectEditorView: View {
     private func advancedEditor(_ project: NarrationProject) -> some View {
         DisclosureGroup(isExpanded: $isAdvancedEditorExpanded) {
             VStack(alignment: .leading, spacing: 13) {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("朗读方式")
+                            .font(.caption.weight(.semibold))
+                        Text(project.scriptMode.helpText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Picker(
+                        "朗读方式",
+                        selection: Binding(
+                            get: { project.scriptMode },
+                            set: { model.updateScriptMode($0) }
+                        )
+                    ) {
+                        ForEach(NarrationScriptMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 230)
+                    .disabled(model.isGenerating || model.isFinishing)
+                    .accessibilityHint("切换后会重新安排朗读短句，原文不会被覆盖")
+
+                    scriptStateLabel(project)
+                    Spacer()
+                    Button("重新整理") { model.reprepareScript() }
+                        .disabled(model.isGenerating || model.isFinishing)
+                        .help("按当前朗读方式重新整理全文")
+                }
+
+                Divider()
+
                 HStack {
                     TextField("项目名称（可不填）", text: $model.draftName)
                         .textFieldStyle(.roundedBorder)
@@ -221,7 +257,7 @@ struct ProjectEditorView: View {
                     .disabled(model.isGenerating || model.isFinishing)
                 }
 
-                Text("只在声音不满意时修改。每段可以修正朗读文字、调整成品节奏、切换版本或单独重做。")
+                Text("只在需要时修改。展开一段可以对照原文、修正实际朗读、调整成品节奏或单独重做。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -230,10 +266,7 @@ struct ProjectEditorView: View {
                         segment: segment,
                         isBusy: model.isGenerating || model.isFinishing,
                         onTextSave: { model.updateSegmentText(id: segment.id, text: $0) },
-                        onExpression: { model.updateSegment(id: segment.id, expression: $0) },
-                        onExpressionIntensity: {
-                            model.updateSegment(id: segment.id, expressionIntensity: $0)
-                        },
+                        onRestoreSource: { model.restoreSegmentSource(id: segment.id) },
                         onSpeed: { model.updateSegment(id: segment.id, speedFactor: $0) },
                         onPause: { model.updateSegment(id: segment.id, pause: $0) },
                         onCandidate: { model.selectCandidate(segmentID: segment.id, candidateID: $0) },
@@ -263,6 +296,30 @@ struct ProjectEditorView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 16)
                 .stroke(Color.black.opacity(0.06), lineWidth: 1)
+        }
+    }
+
+    @ViewBuilder
+    private func scriptStateLabel(_ project: NarrationProject) -> some View {
+        switch project.scriptState {
+        case .pending, .preparing:
+            Label("等待整理", systemImage: "text.alignleft")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        case .completed:
+            Label("稿件已保存", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+        case .fallback:
+            Label("已安全回退", systemImage: "arrow.uturn.backward.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .help(project.scriptErrorSummary ?? "已改为逐字朗读")
+        case .failed:
+            Label("整理失败", systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .help(project.scriptErrorSummary ?? "可以重新整理或使用逐字朗读")
         }
     }
 

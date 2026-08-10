@@ -87,7 +87,25 @@ struct ProjectMigrationSelfTest {
             migrated.formatVersion == NarrationProject.currentFormatVersion,
             "旧项目没有迁移到当前版本"
         )
+        try migrationExpect(migrated.scriptMode == .verbatim, "旧项目应保持逐字朗读")
+        try migrationExpect(migrated.scriptState == .completed, "旧项目口语稿状态应保持可用")
         try migrationExpect(migrated.segments.count == 2, "旧段落没有保留")
+        try migrationExpect(
+            migrated.segments[0].sourceText == "旧版本的知识内容。",
+            "旧段落原文没有保留"
+        )
+        try migrationExpect(
+            migrated.segments[0].spokenText == "旧版本的知识内容。",
+            "旧段落朗读稿没有保留"
+        )
+        try migrationExpect(
+            migrated.segments[0].speakerRole == .narrator,
+            "旧段落应补默认讲解者角色"
+        )
+        try migrationExpect(
+            !migrated.segments[0].scriptFingerprint.isEmpty,
+            "旧段落应补口语稿指纹"
+        )
         try migrationExpect(migrated.segments[0].expression == .natural, "旧段落应补默认表达方式")
         try migrationExpect(
             migrated.segments[0].expressionIntensity == .subtle,
@@ -110,6 +128,15 @@ struct ProjectMigrationSelfTest {
         try migrationExpect(reloaded.formatVersion == NarrationProject.currentFormatVersion, "迁移结果无法重新保存")
         try migrationExpect(reloaded.name == "旧项目", "迁移不应改动项目内容")
         try migrationExpect(reloaded.segments[0].speedFactor == 0.9, "精细语速无法重新保存")
+        try migrationExpect(reloaded.segments[0].sourceText == reloaded.segments[0].spokenText, "迁移后的双文本无法重存")
+
+        let newProject = NarrationProject(
+            name: "新项目",
+            sourceText: "适合自然讲解的新内容。",
+            voiceID: "voice-new"
+        )
+        try migrationExpect(newProject.scriptMode == .spoken, "新项目应默认自然讲解")
+        try migrationExpect(newProject.scriptState == .pending, "新项目应等待口语整理")
 
         print("ProjectMigrationSelfTest: PASS")
     }

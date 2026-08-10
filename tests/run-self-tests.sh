@@ -24,6 +24,8 @@ run_test() {
     "${PROJECT_DIR}/NarrationSegment.swift" \
     "${PROJECT_DIR}/EmotionInstructionBuilder.swift" \
     "${PROJECT_DIR}/NarrationProject.swift" \
+    "${PROJECT_DIR}/SpokenScriptValidator.swift" \
+    "${PROJECT_DIR}/SpokenScriptDirector.swift" \
     "${PROJECT_DIR}/ProjectStore.swift" \
     "${PROJECT_DIR}/NarrationRules.swift" \
     "${PROJECT_DIR}/NarrationDirector.swift" \
@@ -51,6 +53,8 @@ run_test "${TESTS_DIR}/DeviceSynthesisPolicySelfTest.swift"
 run_test "${TESTS_DIR}/EmotionInstructionBuilderSelfTest.swift"
 run_test "${TESTS_DIR}/ProjectStoreSelfTest.swift"
 run_test "${TESTS_DIR}/ProjectMigrationSelfTest.swift"
+run_test "${TESTS_DIR}/SpokenScriptValidatorSelfTest.swift"
+run_test "${TESTS_DIR}/SpokenScriptDirectorSelfTest.swift"
 run_test "${TESTS_DIR}/NarrationDirectorSelfTest.swift"
 run_test "${TESTS_DIR}/GenerationQueueSelfTest.swift"
 run_test "${TESTS_DIR}/AudioAssemblerSelfTest.swift"

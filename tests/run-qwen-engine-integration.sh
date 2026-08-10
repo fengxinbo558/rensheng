@@ -19,6 +19,7 @@ swiftc \
   "${PROJECT_DIR}/AudioProcessing.swift" \
   "${PROJECT_DIR}/VoiceLibrary.swift" \
   "${PROJECT_DIR}/RuntimeLocator.swift" \
+  "${PROJECT_DIR}/NarrationSegment.swift" \
   "${PROJECT_DIR}/SpeechEngine.swift" \
   "${PROJECT_DIR}/QwenSpeechEngine.swift" \
   "${TESTS_DIR}/QwenSpeechEngineIntegration.swift" \

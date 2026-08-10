@@ -78,6 +78,20 @@ struct NarrationDirectorSelfTest {
             "拆分长段落不能丢字"
         )
 
+        let spokenScript = try RuleSpokenScriptDirector().prepare(
+            sourceText: "知识标题\n\n这是实际朗读的普通话内容。",
+            mode: .spoken
+        )
+        let directedScript = director.analyze(script: spokenScript, voiceID: "voice-test")
+        try directorExpect(directedScript.count == spokenScript.segments.count, "口语稿段落没有完整接入")
+        try directorExpect(directedScript[0].sourceText == "知识标题", "口语稿对应原文没有保存")
+        try directorExpect(directedScript[0].spokenText == "知识标题", "实际朗读稿没有保存")
+        try directorExpect(directedScript.allSatisfy { $0.expression == .natural }, "口语稿不应自动添加情绪表演")
+        try directorExpect(
+            directedScript.allSatisfy { !$0.scriptFingerprint.isEmpty },
+            "口语稿段落缺少脚本指纹"
+        )
+
         do {
             _ = try director.analyze(text: "   \n", voiceID: "voice-test")
             throw NarrationDirectorTestFailure.assertion("空文章不应通过分析")

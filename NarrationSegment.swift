@@ -110,6 +110,13 @@ enum NarrationPause: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum NarrationSpeakerRole: String, Codable, CaseIterable, Identifiable {
+    case narrator
+
+    var id: String { rawValue }
+    var label: String { "讲解者" }
+}
+
 enum SegmentGenerationState: String, Codable {
     case pending
     case generating
@@ -146,7 +153,10 @@ struct NarrationAudioCandidate: Identifiable, Codable, Hashable {
 struct NarrationSegment: Identifiable, Codable, Hashable {
     let id: String
     var order: Int
-    var text: String
+    var sourceText: String
+    var spokenText: String
+    var speakerRole: NarrationSpeakerRole
+    var scriptFingerprint: String
     var kind: NarrationSegmentKind
     var expression: NarrationExpression
     var expressionIntensity: ExpressionIntensity
@@ -158,6 +168,11 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
     var candidates: [NarrationAudioCandidate]
     var selectedCandidateID: String?
     var errorSummary: String?
+
+    var text: String {
+        get { spokenText }
+        set { spokenText = newValue }
+    }
 
     init(
         id: String = UUID().uuidString,
@@ -172,7 +187,10 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
     ) {
         self.id = id
         self.order = order
-        self.text = text
+        sourceText = text
+        spokenText = text
+        speakerRole = .narrator
+        scriptFingerprint = ""
         self.kind = kind
         self.expression = expression.currentValue
         self.expressionIntensity = expressionIntensity
@@ -184,7 +202,50 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         candidates = []
         selectedCandidateID = nil
         errorSummary = nil
+        refreshScriptFingerprint(scriptVersion: "verbatim-v1")
         refreshFingerprint(voiceID: voiceID, invalidateChanged: false)
+    }
+
+    init(
+        id: String = UUID().uuidString,
+        order: Int,
+        sourceText: String,
+        spokenText: String,
+        speakerRole: NarrationSpeakerRole = .narrator,
+        scriptVersion: String,
+        kind: NarrationSegmentKind,
+        expression: NarrationExpression = .natural,
+        expressionIntensity: ExpressionIntensity = .subtle,
+        speedFactor: Double = 1.0,
+        pause: NarrationPause = .normal,
+        voiceID: String
+    ) {
+        self.id = id
+        self.order = order
+        self.sourceText = sourceText
+        self.spokenText = spokenText
+        self.speakerRole = speakerRole
+        scriptFingerprint = ""
+        self.kind = kind
+        self.expression = expression.currentValue
+        self.expressionIntensity = expressionIntensity
+        self.speedFactor = Self.normalizedSpeedFactor(speedFactor)
+        self.pause = pause
+        inputFingerprint = ""
+        generationState = .pending
+        generationAttempts = 0
+        candidates = []
+        selectedCandidateID = nil
+        errorSummary = nil
+        refreshScriptFingerprint(scriptVersion: scriptVersion)
+        refreshFingerprint(voiceID: voiceID, invalidateChanged: false)
+    }
+
+    mutating func refreshScriptFingerprint(scriptVersion: String) {
+        scriptFingerprint = Self.hash(
+            [sourceText, spokenText, speakerRole.rawValue, scriptVersion]
+                .joined(separator: "\u{1f}")
+        )
     }
 
     mutating func refreshFingerprint(voiceID: String, invalidateChanged: Bool) {
@@ -222,16 +283,21 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
             expressionIntensity.rawValue,
             voiceID,
         ].joined(separator: "\u{1f}")
-        var hash: UInt64 = 14_695_981_039_346_656_037
+        return hash(value)
+    }
+
+    private static func hash(_ value: String) -> String {
+        var result: UInt64 = 14_695_981_039_346_656_037
         for byte in value.utf8 {
-            hash ^= UInt64(byte)
-            hash = hash &* 1_099_511_628_211
+            result ^= UInt64(byte)
+            result = result &* 1_099_511_628_211
         }
-        return String(format: "%016llx", hash)
+        return String(format: "%016llx", result)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, order, text, kind, expression, expressionIntensity, speedFactor, speed, pause
+        case id, order, text, sourceText, spokenText, speakerRole, scriptFingerprint
+        case kind, expression, expressionIntensity, speedFactor, speed, pause
         case inputFingerprint
         case generationState, generationAttempts, candidates, selectedCandidateID, errorSummary
     }
@@ -240,7 +306,17 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
         order = try container.decodeIfPresent(Int.self, forKey: .order) ?? 0
-        text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        let legacyText = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        sourceText = try container.decodeIfPresent(String.self, forKey: .sourceText) ?? legacyText
+        spokenText = try container.decodeIfPresent(String.self, forKey: .spokenText) ?? legacyText
+        speakerRole = try container.decodeIfPresent(
+            NarrationSpeakerRole.self,
+            forKey: .speakerRole
+        ) ?? .narrator
+        scriptFingerprint = try container.decodeIfPresent(
+            String.self,
+            forKey: .scriptFingerprint
+        ) ?? ""
         kind = try container.decodeIfPresent(NarrationSegmentKind.self, forKey: .kind)
             ?? .explanation
         expression = try container.decodeIfPresent(NarrationExpression.self, forKey: .expression)?
@@ -277,7 +353,10 @@ struct NarrationSegment: Identifiable, Codable, Hashable {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(id, forKey: .id)
         try container.encode(order, forKey: .order)
-        try container.encode(text, forKey: .text)
+        try container.encode(sourceText, forKey: .sourceText)
+        try container.encode(spokenText, forKey: .spokenText)
+        try container.encode(speakerRole, forKey: .speakerRole)
+        try container.encode(scriptFingerprint, forKey: .scriptFingerprint)
         try container.encode(kind, forKey: .kind)
         try container.encode(expression, forKey: .expression)
         try container.encode(expressionIntensity, forKey: .expressionIntensity)

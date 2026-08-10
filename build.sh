@@ -18,6 +18,7 @@ VOCODER_SOURCE="${WORKSPACE_ROOT}/spike/models/exploratory/vocos_24khz.onnx"
 DENOISER_SOURCE="${WORKSPACE_ROOT}/spike/models/exploratory/sherpa-onnx-speech-enhancement/gtcrn_simple.onnx"
 REFERENCE_SOURCE="${WORKSPACE_ROOT}/spike/fixtures/voice-clone-v1/data/system-voice-smoke-reference.wav"
 MP3_ENCODER_SOURCE="${SCRIPT_DIR}/Runtime/MP3Encoder"
+THIRD_PARTY_SOURCE="${SCRIPT_DIR}/ThirdParty"
 
 case "${BUILD_FLAVOR}" in
   developer|portable) ;;
@@ -36,7 +37,8 @@ for required_path in \
   "${MP3_ENCODER_SOURCE}/lame" \
   "${MP3_ENCODER_SOURCE}/COPYING" \
   "${MP3_ENCODER_SOURCE}/lame-3.100.tar.gz" \
-  "${SCRIPT_DIR}/package-emotion-runtime.sh"; do
+  "${THIRD_PARTY_SOURCE}/OpenNotebook/LICENSE" \
+  "${THIRD_PARTY_SOURCE}/OpenNotebook/NOTICE.md"; do
   if [[ ! -e "${required_path}" ]]; then
     print -u2 -- "缺少应用资源：${required_path}"
     exit 1
@@ -55,10 +57,15 @@ mkdir -p "${MACOS_PATH}" "${RESOURCES_PATH}/Models" "${RESOURCES_PATH}/Fixtures"
 cp "${SCRIPT_DIR}/Info.plist" "${CONTENTS_PATH}/Info.plist"
 /usr/bin/ditto "${SHERPA_SOURCE}" "${RESOURCES_PATH}/Sherpa"
 /usr/bin/ditto "${ZIPVOICE_SOURCE}" "${RESOURCES_PATH}/Models/ZipVoice"
+ZIPVOICE_TEST_AUDIO="${RESOURCES_PATH}/Models/ZipVoice/test_wavs"
+if [[ "${ZIPVOICE_TEST_AUDIO}" == "${RESOURCES_PATH}/Models/ZipVoice/test_wavs" ]]; then
+  rm -rf "${ZIPVOICE_TEST_AUDIO}"
+fi
 cp "${VOCODER_SOURCE}" "${RESOURCES_PATH}/Models/vocos_24khz.onnx"
 cp "${DENOISER_SOURCE}" "${RESOURCES_PATH}/Models/gtcrn_simple.onnx"
 cp "${REFERENCE_SOURCE}" "${RESOURCES_PATH}/Fixtures/default-reference.wav"
 /usr/bin/ditto --norsrc "${MP3_ENCODER_SOURCE}" "${RESOURCES_PATH}/MP3Encoder"
+/usr/bin/ditto --norsrc "${THIRD_PARTY_SOURCE}" "${RESOURCES_PATH}/ThirdParty"
 chmod +x "${RESOURCES_PATH}/MP3Encoder/lame"
 
 if [[ "${BUILD_FLAVOR}" == "portable" ]]; then
@@ -70,7 +77,6 @@ if [[ "${BUILD_FLAVOR}" == "portable" ]]; then
   /usr/bin/ditto --norsrc \
     "${WORKSPACE_ROOT}/spike/models/experimental/deepfilternet-mlx/v3" \
     "${RESOURCES_PATH}/Models/DeepFilterNet/v3"
-  "${SCRIPT_DIR}/package-emotion-runtime.sh" "${RESOURCES_PATH}"
 fi
 
 SWIFT_SOURCES=("${SCRIPT_DIR}"/*.swift)
