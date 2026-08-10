@@ -65,8 +65,36 @@ struct ProjectStoreSelfTest {
         let loaded = try store.loadProject(id: project.id)
         try projectExpect(loaded.name == project.name, "项目名称没有保存")
         try projectExpect(loaded.sourceText == project.sourceText, "项目原文没有保存")
+        try projectExpect(loaded.source.kind == .text, "手工创建的项目应保存为文字来源")
+        try projectExpect(loaded.importState == .ready, "手工创建的项目应处于可生成状态")
         try projectExpect(loaded.segments.count == 2, "项目段落没有保存")
         try projectExpect(loaded.segments[0].selectedCandidateID == candidate.id, "已选音频版本没有保存")
+
+        let capturedSource = NarrationSource(
+            kind: .pdf,
+            title: "等待提取的资料",
+            managedFileRelativePath: "source/original.pdf"
+        )
+        var captured = try store.createCapturedProject(
+            name: "等待提取的资料",
+            voiceID: "voice-a",
+            source: capturedSource
+        )
+        try projectExpect(captured.sourceText.isEmpty, "刚捕获的来源应允许正文为空")
+        try projectExpect(captured.importState == .captured, "刚捕获的来源状态不正确")
+        captured.importState = .extracting
+        try store.save(captured)
+        let reloadedCaptured = try store.loadProject(id: captured.id)
+        try projectExpect(reloadedCaptured.importState == .extracting, "提取状态没有保存")
+        try projectExpect(reloadedCaptured.source.kind == .pdf, "PDF 来源类型没有保存")
+        var invalidReady = reloadedCaptured
+        invalidReady.importState = .ready
+        do {
+            try store.save(invalidReady)
+            throw ProjectStoreTestFailure.assertion("可生成项目不应允许空正文")
+        } catch ProjectStoreError.emptyText {
+            // 预期结果。
+        }
 
         var speedOnly = loaded
         speedOnly.segments[0].speedFactor = 1.7
@@ -100,10 +128,21 @@ struct ProjectStoreSelfTest {
                 sourceText: exactlyLimit + "字",
                 voiceID: "voice-a"
             )
-            throw ProjectStoreTestFailure.assertion("超过 3000 字的项目不应创建")
+            throw ProjectStoreTestFailure.assertion("超过安全上限的项目不应创建")
         } catch ProjectStoreError.textTooLong {
             // 预期结果。
         }
+
+        var recentlyPlayed = loaded
+        recentlyPlayed.lastPlayedAt = Date().addingTimeInterval(2_000)
+        recentlyPlayed.updatedAt = Date().addingTimeInterval(-2_000)
+        try store.save(recentlyPlayed)
+        captured.importState = .needsAttention
+        captured.importErrorSummary = "等待重试"
+        captured.updatedAt = Date().addingTimeInterval(1_000)
+        try store.save(captured)
+        let sorted = try store.loadAllProjects()
+        try projectExpect(sorted.first?.id == recentlyPlayed.id, "最近播放的项目应排在前面")
 
         let failingStore = ProjectStore(rootDirectory: root) { _, _ in
             throw ProjectStoreTestFailure.simulatedWriteFailure

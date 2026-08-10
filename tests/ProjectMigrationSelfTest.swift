@@ -89,6 +89,13 @@ struct ProjectMigrationSelfTest {
         )
         try migrationExpect(migrated.scriptMode == .verbatim, "旧项目应保持逐字朗读")
         try migrationExpect(migrated.scriptState == .completed, "旧项目口语稿状态应保持可用")
+        try migrationExpect(migrated.source.kind == .text, "旧项目应迁移为文字来源")
+        try migrationExpect(migrated.source.title == "旧项目", "旧项目来源标题应沿用项目名称")
+        try migrationExpect(migrated.importState == .ready, "旧项目应迁移为可生成状态")
+        try migrationExpect(migrated.importErrorSummary == nil, "旧项目不应产生导入错误")
+        try migrationExpect(migrated.playbackPositionSeconds == 0, "旧项目播放位置应从头开始")
+        try migrationExpect(migrated.lastPlayedAt == nil, "旧项目不应虚构播放时间")
+        try migrationExpect(!migrated.listeningCompleted, "旧项目不应自动标记听完")
         try migrationExpect(migrated.segments.count == 2, "旧段落没有保留")
         try migrationExpect(
             migrated.segments[0].sourceText == "旧版本的知识内容。",
@@ -135,6 +142,8 @@ struct ProjectMigrationSelfTest {
             sourceText: "适合自然讲解的新内容。",
             voiceID: "voice-new"
         )
+        try migrationExpect(newProject.source.kind == .text, "新项目应默认使用文字来源")
+        try migrationExpect(newProject.importState == .ready, "带正文的新项目应可直接生成")
         try migrationExpect(newProject.scriptMode == .spoken, "新项目应默认自然讲解")
         try migrationExpect(newProject.scriptState == .pending, "新项目应等待口语整理")
         try migrationExpect(

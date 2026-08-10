@@ -20,7 +20,6 @@ final class ProjectStore: @unchecked Sendable {
     }
 
     func createProject(name: String, sourceText: String, voiceID: String) throws -> NarrationProject {
-        try validate(sourceText: sourceText)
         let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let project = NarrationProject(
             name: cleanName.isEmpty ? "未命名朗读" : cleanName,
@@ -31,8 +30,25 @@ final class ProjectStore: @unchecked Sendable {
         return project
     }
 
+    func createCapturedProject(
+        name: String,
+        voiceID: String,
+        source: NarrationSource
+    ) throws -> NarrationProject {
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let project = NarrationProject(
+            name: cleanName.isEmpty ? "等待导入的内容" : cleanName,
+            sourceText: "",
+            source: source,
+            importState: .captured,
+            voiceID: voiceID
+        )
+        try save(project)
+        return project
+    }
+
     func save(_ project: NarrationProject) throws {
-        try validate(sourceText: project.sourceText)
+        try validate(project: project)
         let directory = try projectDirectory(for: project.id)
         try createProjectDirectories(at: directory)
 
@@ -66,7 +82,9 @@ final class ProjectStore: @unchecked Sendable {
         return contents.compactMap { directory in
             guard UUID(uuidString: directory.lastPathComponent) != nil else { return nil }
             return try? loadProject(id: directory.lastPathComponent)
-        }.sorted { $0.updatedAt > $1.updatedAt }
+        }.sorted {
+            ($0.lastPlayedAt ?? $0.updatedAt) > ($1.lastPlayedAt ?? $1.updatedAt)
+        }
     }
 
     func deleteProject(id: String) throws {
@@ -110,7 +128,7 @@ final class ProjectStore: @unchecked Sendable {
 
     private func createProjectDirectories(at directory: URL) throws {
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        for child in ["segments", "previews", "final"] {
+        for child in ["source", "segments", "previews", "final"] {
             try fileManager.createDirectory(
                 at: directory.appendingPathComponent(child, isDirectory: true),
                 withIntermediateDirectories: true
@@ -118,8 +136,10 @@ final class ProjectStore: @unchecked Sendable {
         }
     }
 
-    private func validate(sourceText: String) throws {
-        guard !sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+    private func validate(project: NarrationProject) throws {
+        let sourceText = project.sourceText
+        if project.importState == .ready,
+           sourceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             throw ProjectStoreError.emptyText
         }
         guard sourceText.count <= NarrationProject.maximumCharacterCount else {
@@ -140,7 +160,7 @@ enum ProjectStoreError: LocalizedError {
         case .emptyText:
             return "请输入要朗读的文字"
         case .textTooLong:
-            return "第一版每个项目最多支持 3000 个字"
+            return "当前版本每个项目最多支持 \(NarrationProject.maximumCharacterCount) 个字"
         case .invalidProjectID:
             return "项目标识无效"
         case .invalidRelativePath:
