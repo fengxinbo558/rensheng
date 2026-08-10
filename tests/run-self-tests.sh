@@ -25,6 +25,10 @@ run_test() {
     "${PROJECT_DIR}/NarrationSegment.swift" \
     "${PROJECT_DIR}/EmotionInstructionBuilder.swift" \
     "${PROJECT_DIR}/NarrationProject.swift" \
+    "${PROJECT_DIR}/ContentImporter.swift" \
+    "${PROJECT_DIR}/PlainTextImporter.swift" \
+    "${PROJECT_DIR}/PDFTextImporter.swift" \
+    "${PROJECT_DIR}/ContentImportCoordinator.swift" \
     "${PROJECT_DIR}/SpokenScriptValidator.swift" \
     "${PROJECT_DIR}/SpokenScriptDirector.swift" \
     "${PROJECT_DIR}/ProjectStore.swift" \
@@ -38,6 +42,8 @@ run_test() {
     "${PROJECT_DIR}/AudioTimeStretcher.swift" \
     "${PROJECT_DIR}/PlaybackController.swift" \
     "${test_source}" \
+    -framework PDFKit \
+    -framework CoreText \
     -o "${test_root}/${test_name}"
 
   LOCAL_AUDIO_PROBE_TEST_ROOT="${test_root}" \
@@ -55,6 +61,9 @@ run_test "${TESTS_DIR}/DeviceSynthesisPolicySelfTest.swift"
 run_test "${TESTS_DIR}/EmotionInstructionBuilderSelfTest.swift"
 run_test "${TESTS_DIR}/ProjectStoreSelfTest.swift"
 run_test "${TESTS_DIR}/ProjectMigrationSelfTest.swift"
+run_test "${TESTS_DIR}/ContentImporterSelfTest.swift"
+run_test "${TESTS_DIR}/PDFTextImporterSelfTest.swift"
+run_test "${TESTS_DIR}/ContentImportCoordinatorSelfTest.swift"
 run_test "${TESTS_DIR}/SpokenScriptValidatorSelfTest.swift"
 run_test "${TESTS_DIR}/SpokenScriptDirectorSelfTest.swift"
 run_test "${TESTS_DIR}/NarrationDirectorSelfTest.swift"
