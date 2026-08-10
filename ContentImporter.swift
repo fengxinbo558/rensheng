@@ -1,11 +1,11 @@
 import Foundation
 
-enum ContentImportRequest: Equatable {
+enum ContentImportRequest: Equatable, Sendable {
     case plainText(text: String, title: String?)
     case pdf(URL)
 }
 
-struct ImportedContent: Equatable {
+struct ImportedContent: Equatable, Sendable {
     var source: NarrationSource
     var text: String
 }

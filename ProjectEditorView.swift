@@ -42,10 +42,10 @@ struct ProjectEditorView: View {
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .tracking(1.5)
                     .foregroundStyle(Color(red: 0.18, green: 0.41, blue: 0.78))
-                Text("把知识讲清楚，\n也讲得像人。")
+                Text("把没时间看的，\n留到稍后听。")
                     .font(.system(size: 31, weight: .semibold, design: .serif))
                     .lineSpacing(2)
-                Text("选择音色、粘贴文章，剩下的交给应用。")
+                Text("内容留在本机，从上次的位置继续。")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -56,7 +56,7 @@ struct ProjectEditorView: View {
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
                     .background(Color.green.opacity(0.12), in: Capsule())
-                Text("普通话 · 最多 3000 字")
+                Text("普通话 · 最多 30000 字")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -65,8 +65,14 @@ struct ProjectEditorView: View {
 
     private var articleInput: some View {
         VStack(alignment: .leading, spacing: 14) {
+            SourceImportView(
+                isBusy: model.isImportingSource,
+                onImportText: { model.importPlainText($0) },
+                onImportPDF: { model.importPDF($0) }
+            )
+
             HStack {
-                Text("要朗读的内容")
+                Text("听读内容")
                     .font(.headline)
                 Text("默认整理成自然口语，原文始终保留")
                     .font(.caption)
@@ -102,8 +108,8 @@ struct ProjectEditorView: View {
                         )
                 }
                 .frame(minHeight: 210)
-                .accessibilityLabel("要制作成朗读音频的文章")
-                .accessibilityHint("第一版最多支持 3000 个字")
+                .accessibilityLabel("要制作成听读音频的文字")
+                .accessibilityHint("当前版本最多支持 30000 个字")
 
             HStack(spacing: 10) {
                 Picker(

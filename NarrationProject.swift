@@ -1,6 +1,6 @@
 import Foundation
 
-enum NarrationSourceKind: String, Codable, CaseIterable, Identifiable {
+enum NarrationSourceKind: String, Codable, CaseIterable, Identifiable, Sendable {
     case text
     case webPage
     case pdf
@@ -10,7 +10,7 @@ enum NarrationSourceKind: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-struct NarrationSource: Codable, Hashable {
+struct NarrationSource: Codable, Hashable, Sendable {
     var kind: NarrationSourceKind
     var title: String
     var originalURLString: String?
@@ -32,7 +32,7 @@ struct NarrationSource: Codable, Hashable {
     }
 }
 
-enum NarrationImportState: String, Codable {
+enum NarrationImportState: String, Codable, Sendable {
     case captured
     case extracting
     case ready

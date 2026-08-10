@@ -12,15 +12,18 @@ final class NarrationWorkspaceModel: ObservableObject {
     @Published private(set) var isGenerating = false
     @Published private(set) var isFinishing = false
     @Published private(set) var isPreparingPreview = false
+    @Published private(set) var isImportingSource = false
     @Published private(set) var queueProgress: GenerationQueueProgress?
     @Published private(set) var finalAudioURLs: [AudioExportFormat: URL] = [:]
 
     private let store: ProjectStore
     private let availableAudioBuilder: AvailableAudioBuilder
+    private let importCoordinator: ContentImportCoordinator
     private let director = NarrationDirector()
     private let spokenScriptDirector: any SpokenScriptDirecting
     let playback: PlaybackController
     private var activeQueue: GenerationQueue?
+    private var activeImportTask: Task<Void, Never>?
 
     init(
         store: ProjectStore = ProjectStore(),
@@ -29,6 +32,7 @@ final class NarrationWorkspaceModel: ObservableObject {
     ) {
         self.store = store
         self.availableAudioBuilder = AvailableAudioBuilder(store: store)
+        self.importCoordinator = ContentImportCoordinator(store: store)
         self.spokenScriptDirector = spokenScriptDirector
         self.playback = playback
         playback.onProgressChanged = { [weak self] snapshot in
@@ -48,6 +52,7 @@ final class NarrationWorkspaceModel: ObservableObject {
         let count = draftText.trimmingCharacters(in: .whitespacesAndNewlines).count
         return !isGenerating
             && !isFinishing
+            && !isImportingSource
             && count > 0
             && draftText.count <= NarrationProject.maximumCharacterCount
             && !draftVoiceID.isEmpty
@@ -57,6 +62,7 @@ final class NarrationWorkspaceModel: ObservableObject {
         let count = draftText.trimmingCharacters(in: .whitespacesAndNewlines).count
         return !isGenerating
             && !isFinishing
+            && !isImportingSource
             && count > 0
             && draftText.count <= NarrationProject.maximumCharacterCount
             && !draftVoiceID.isEmpty
@@ -64,7 +70,10 @@ final class NarrationWorkspaceModel: ObservableObject {
 
     var canGenerate: Bool {
         guard let selectedProject else { return false }
-        return !isGenerating && !isFinishing && !selectedProject.segments.isEmpty
+        return !isGenerating
+            && !isFinishing
+            && !isImportingSource
+            && !selectedProject.segments.isEmpty
     }
 
     var completedSegmentCount: Int {
@@ -112,6 +121,14 @@ final class NarrationWorkspaceModel: ObservableObject {
         refreshDraftAudioAvailability()
     }
 
+    func importPlainText(_ text: String) {
+        beginImport(.plainText(text: text, title: nil))
+    }
+
+    func importPDF(_ url: URL) {
+        beginImport(.pdf(url))
+    }
+
     func saveProjectName() {
         guard var project = selectedProject else { return }
         project.name = resolvedName()
@@ -147,9 +164,16 @@ final class NarrationWorkspaceModel: ObservableObject {
             draftText = loaded.sourceText
             draftVoiceID = loaded.voiceID
             loadFinalURLs(from: loaded)
-            status = loaded.segments.isEmpty
-                ? "文章已保存，下一步分析朗读方式"
-                : "已恢复 \(loaded.segments.count) 个朗读段落"
+            switch loaded.importState {
+            case .captured, .extracting:
+                status = "来源已经保存，正在提取可以朗读的文字"
+            case .needsAttention:
+                status = loaded.importErrorSummary ?? "这份内容需要重新处理"
+            case .ready:
+                status = loaded.segments.isEmpty
+                    ? "内容已保存，选择音色后即可生成"
+                    : "已恢复 \(loaded.segments.count) 个朗读段落"
+            }
         } catch {
             status = "项目打开失败：\(error.localizedDescription)"
         }
@@ -669,6 +693,58 @@ final class NarrationWorkspaceModel: ObservableObject {
         let firstLine = draftText.split(whereSeparator: { $0.isNewline }).first.map(String.init)
             ?? "未命名朗读"
         return String(firstLine.prefix(24))
+    }
+
+    private func beginImport(_ request: ContentImportRequest) {
+        guard !isImportingSource, !isGenerating, !isFinishing else { return }
+        isImportingSource = true
+        status = "正在把内容保存到本地听读箱…"
+        let coordinator = importCoordinator
+        let voiceID = draftVoiceID
+        activeImportTask = Task { [weak self] in
+            do {
+                let project = try await Task.detached(priority: .userInitiated) {
+                    let securityScopedURL: URL?
+                    switch request {
+                    case .plainText:
+                        securityScopedURL = nil
+                    case .pdf(let url):
+                        securityScopedURL = url
+                    }
+                    let didAccess = securityScopedURL?.startAccessingSecurityScopedResource() ?? false
+                    defer {
+                        if didAccess { securityScopedURL?.stopAccessingSecurityScopedResource() }
+                    }
+                    return try await coordinator.importContent(
+                        from: request,
+                        defaultVoiceID: voiceID
+                    )
+                }.value
+                guard let self else { return }
+                self.activeImportTask = nil
+                self.isImportingSource = false
+                self.reloadProjects(selecting: project.id)
+                self.selectProject(project)
+                self.status = project.source.kind == .pdf
+                    ? "PDF 已保存在本机，检查文字后即可生成"
+                    : "文字已保存在本机，选择音色后即可生成"
+            } catch is CancellationError {
+                guard let self else { return }
+                self.activeImportTask = nil
+                self.isImportingSource = false
+                self.reloadProjects()
+                self.status = "导入已停止，来源记录仍保留在本机"
+            } catch {
+                guard let self else { return }
+                self.activeImportTask = nil
+                self.isImportingSource = false
+                self.reloadProjects()
+                if let failed = self.projects.first(where: { $0.importState == .needsAttention }) {
+                    self.selectProject(failed)
+                }
+                self.status = "导入失败：\(error.localizedDescription)"
+            }
+        }
     }
 
     private func merge(

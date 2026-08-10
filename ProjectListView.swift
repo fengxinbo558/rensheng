@@ -8,7 +8,7 @@ struct ProjectListView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("我的朗读")
+                Text("我的听读")
                     .font(.system(size: 21, weight: .semibold, design: .rounded))
                 Text("文章与音频都只保存在本机")
                     .font(.caption)
@@ -18,11 +18,13 @@ struct ProjectListView: View {
             Button {
                 model.startNewProject(defaultVoiceID: defaultVoiceID)
             } label: {
-                Label("新建朗读项目", systemImage: "plus")
+                Label("新建听读", systemImage: "plus")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+            .disabled(model.isImportingSource)
+            .help(model.isImportingSource ? "当前内容导入完成后即可新建" : "新建一份听读")
 
             if model.projects.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -31,7 +33,7 @@ struct ProjectListView: View {
                         .foregroundStyle(Color(red: 0.18, green: 0.41, blue: 0.78))
                     Text("还没有保存的项目")
                         .font(.headline)
-                    Text("从右侧粘贴第一篇文章。")
+                    Text("从右侧粘贴文字或放入 PDF。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -64,9 +66,16 @@ struct ProjectListView: View {
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(2)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    Text(project.segments.isEmpty ? "等待分析" : "\(completed) / \(project.segments.count) 段")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        SourceBadgeView(kind: project.source.kind)
+                        Text(projectStatus(project, completed: completed))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(
+                                project.importState == .needsAttention
+                                    ? Color.orange
+                                    : Color.secondary
+                            )
+                    }
                 }
                 .contentShape(Rectangle())
             }
@@ -91,6 +100,24 @@ struct ProjectListView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 11)
                 .stroke(isSelected ? Color.blue.opacity(0.5) : Color.clear, lineWidth: 1)
+        }
+    }
+
+    private func projectStatus(_ project: NarrationProject, completed: Int) -> String {
+        switch project.importState {
+        case .captured, .extracting:
+            return "正在导入"
+        case .needsAttention:
+            return "需要处理"
+        case .ready:
+            if project.listeningCompleted { return "已听完" }
+            if project.playbackPositionSeconds > 0 {
+                let seconds = Int(project.playbackPositionSeconds.rounded(.down))
+                return String(format: "继续 %d:%02d", seconds / 60, seconds % 60)
+            }
+            return project.segments.isEmpty
+                ? "等待生成"
+                : "\(completed) / \(project.segments.count) 段"
         }
     }
 }
