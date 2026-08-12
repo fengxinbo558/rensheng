@@ -19,6 +19,7 @@ DENOISER_SOURCE="${WORKSPACE_ROOT}/spike/models/exploratory/sherpa-onnx-speech-e
 REFERENCE_SOURCE="${WORKSPACE_ROOT}/spike/fixtures/voice-clone-v1/data/system-voice-smoke-reference.wav"
 MP3_ENCODER_SOURCE="${SCRIPT_DIR}/Runtime/MP3Encoder"
 THIRD_PARTY_SOURCE="${SCRIPT_DIR}/ThirdParty"
+APP_ICON_SOURCE="${SCRIPT_DIR}/Assets/AppIcon.png"
 
 case "${BUILD_FLAVOR}" in
   developer|portable) ;;
@@ -34,6 +35,7 @@ for required_path in \
   "${VOCODER_SOURCE}" \
   "${DENOISER_SOURCE}" \
   "${REFERENCE_SOURCE}" \
+  "${APP_ICON_SOURCE}" \
   "${MP3_ENCODER_SOURCE}/lame" \
   "${MP3_ENCODER_SOURCE}/COPYING" \
   "${MP3_ENCODER_SOURCE}/lame-3.100.tar.gz" \
@@ -70,6 +72,24 @@ cp "${REFERENCE_SOURCE}" "${RESOURCES_PATH}/Fixtures/default-reference.wav"
 /usr/bin/ditto --norsrc "${MP3_ENCODER_SOURCE}" "${RESOURCES_PATH}/MP3Encoder"
 /usr/bin/ditto --norsrc "${THIRD_PARTY_SOURCE}" "${RESOURCES_PATH}/ThirdParty"
 chmod +x "${RESOURCES_PATH}/MP3Encoder/lame"
+
+ICON_TEMP_ROOT="$(mktemp -d "/tmp/voice-director-icon.XXXXXX")"
+ICONSET_PATH="${ICON_TEMP_ROOT}/AppIcon.iconset"
+mkdir -p "${ICONSET_PATH}"
+sips -z 16 16 "${APP_ICON_SOURCE}" --out "${ICONSET_PATH}/icon_16x16.png" >/dev/null
+sips -z 32 32 "${APP_ICON_SOURCE}" --out "${ICONSET_PATH}/icon_16x16@2x.png" >/dev/null
+sips -z 32 32 "${APP_ICON_SOURCE}" --out "${ICONSET_PATH}/icon_32x32.png" >/dev/null
+sips -z 64 64 "${APP_ICON_SOURCE}" --out "${ICONSET_PATH}/icon_32x32@2x.png" >/dev/null
+sips -z 128 128 "${APP_ICON_SOURCE}" --out "${ICONSET_PATH}/icon_128x128.png" >/dev/null
+sips -z 256 256 "${APP_ICON_SOURCE}" --out "${ICONSET_PATH}/icon_128x128@2x.png" >/dev/null
+sips -z 256 256 "${APP_ICON_SOURCE}" --out "${ICONSET_PATH}/icon_256x256.png" >/dev/null
+sips -z 512 512 "${APP_ICON_SOURCE}" --out "${ICONSET_PATH}/icon_256x256@2x.png" >/dev/null
+sips -z 512 512 "${APP_ICON_SOURCE}" --out "${ICONSET_PATH}/icon_512x512.png" >/dev/null
+sips -z 1024 1024 "${APP_ICON_SOURCE}" --out "${ICONSET_PATH}/icon_512x512@2x.png" >/dev/null
+iconutil -c icns "${ICONSET_PATH}" -o "${RESOURCES_PATH}/AppIcon.icns"
+if [[ "${ICON_TEMP_ROOT}" == /tmp/voice-director-icon.* ]]; then
+  rm -rf "${ICON_TEMP_ROOT}"
+fi
 
 if [[ "${BUILD_FLAVOR}" == "portable" ]]; then
   plutil -insert LocalAudioPortableRuntime -bool true "${CONTENTS_PATH}/Info.plist"

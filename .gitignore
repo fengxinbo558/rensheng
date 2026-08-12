@@ -2,6 +2,7 @@
 .build/
 .swiftpm/
 build/
+tmp/
 *.dSYM/
 *.log
 *.tmp
