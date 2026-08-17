@@ -48,16 +48,17 @@ final class VoiceLibrary: ObservableObject {
     @Published var errorMessage: String?
 
     private static let selectionKey = "SelectedVoiceProfileID"
-    private static let builtInID = "builtin-local-test-voice"
+    private static let builtInFemaleID = "builtin-system-female"
+    private static let builtInMaleID = "builtin-system-male"
 
     init() {
         selectedVoiceID = UserDefaults.standard.string(forKey: Self.selectionKey)
-            ?? Self.builtInID
+            ?? Self.builtInFemaleID
         load()
     }
 
     var selectedProfile: VoiceProfile {
-        profiles.first(where: { $0.id == selectedVoiceID }) ?? Self.builtInProfile
+        profiles.first(where: { $0.id == selectedVoiceID }) ?? Self.fallbackBuiltInProfile
     }
 
     var customProfiles: [VoiceProfile] {
@@ -91,17 +92,18 @@ final class VoiceLibrary: ObservableObject {
                     migrationWarnings.append("“\(profile.name)”暂未完成降噪：\(error.localizedDescription)")
                 }
             }
-            profiles = [Self.builtInProfile] + custom.sorted { $0.createdAt < $1.createdAt }
+            let builtIns = try Self.ensureBuiltInProfiles()
+            profiles = builtIns + custom.sorted { $0.createdAt < $1.createdAt }
             if !profiles.contains(where: { $0.id == selectedVoiceID }) {
-                selectedVoiceID = Self.builtInID
+                selectedVoiceID = Self.builtInFemaleID
             }
             if didMigrate {
                 try persistCustomProfiles()
             }
             errorMessage = migrationWarnings.isEmpty ? nil : migrationWarnings.joined(separator: "\n")
         } catch {
-            profiles = [Self.builtInProfile]
-            selectedVoiceID = Self.builtInID
+            profiles = [Self.fallbackBuiltInProfile]
+            selectedVoiceID = Self.builtInFemaleID
             errorMessage = "声音库载入失败：\(error.localizedDescription)"
         }
     }
@@ -176,7 +178,7 @@ final class VoiceLibrary: ObservableObject {
         }
         profiles.removeAll { $0.id == profile.id }
         if selectedVoiceID == profile.id {
-            selectedVoiceID = Self.builtInID
+            selectedVoiceID = Self.builtInFemaleID
         }
         try persistCustomProfiles()
         errorMessage = nil
@@ -291,9 +293,9 @@ final class VoiceLibrary: ObservableObject {
         try data.write(to: ProbeConfiguration.voicesIndexURL, options: .atomic)
     }
 
-    private static let builtInProfile = VoiceProfile(
-        id: builtInID,
-        name: "内置测试女声",
+    private static let fallbackBuiltInProfile = VoiceProfile(
+        id: builtInFemaleID,
+        name: "系统女声",
         referenceAudioPath: ProbeConfiguration.defaultReferenceAudio.path,
         originalAudioPath: nil,
         processedAudioPath: nil,
@@ -303,6 +305,75 @@ final class VoiceLibrary: ObservableObject {
         authorizationConfirmedAt: nil,
         isBuiltIn: true
     )
+
+    private static func ensureBuiltInProfiles() throws -> [VoiceProfile] {
+        try FileManager.default.createDirectory(
+            at: ProbeConfiguration.builtInVoicesDirectory,
+            withIntermediateDirectories: true
+        )
+
+        let specifications: [(id: String, name: String, systemVoice: String, filename: String)] = [
+            (builtInFemaleID, "系统女声", "Tingting", "system-female.wav"),
+            (builtInMaleID, "系统男声", "Grandpa (中文（中国大陆）)", "system-male.wav"),
+        ]
+
+        return try specifications.map { specification in
+            let output = ProbeConfiguration.builtInVoicesDirectory
+                .appendingPathComponent(specification.filename)
+            try ensureSystemReferenceAudio(voice: specification.systemVoice, output: output)
+            return VoiceProfile(
+                id: specification.id,
+                name: specification.name,
+                referenceAudioPath: output.path,
+                originalAudioPath: nil,
+                processedAudioPath: nil,
+                qualitySummary: nil,
+                referenceText: ProbeConfiguration.defaultReferenceText,
+                createdAt: .distantPast,
+                authorizationConfirmedAt: nil,
+                isBuiltIn: true
+            )
+        }
+    }
+
+    private static func ensureSystemReferenceAudio(voice: String, output: URL) throws {
+        if FileManager.default.fileExists(atPath: output.path),
+           let attributes = try? FileManager.default.attributesOfItem(atPath: output.path),
+           let size = attributes[.size] as? NSNumber,
+           size.intValue > 44 {
+            return
+        }
+
+        let temporary = output.deletingPathExtension().appendingPathExtension("aiff")
+        try? FileManager.default.removeItem(at: temporary)
+        defer { try? FileManager.default.removeItem(at: temporary) }
+
+        let say = Process()
+        say.executableURL = URL(fileURLWithPath: "/usr/bin/say")
+        say.arguments = ["-v", voice, "-o", temporary.path, ProbeConfiguration.defaultReferenceText]
+        try say.run()
+        say.waitUntilExit()
+        guard say.terminationStatus == 0,
+              FileManager.default.fileExists(atPath: temporary.path) else {
+            throw VoiceLibraryError.systemVoiceUnavailable(voice)
+        }
+
+        let convert = Process()
+        convert.executableURL = URL(fileURLWithPath: "/usr/bin/afconvert")
+        convert.arguments = [
+            temporary.path,
+            "-o", output.path,
+            "-f", "WAVE",
+            "-d", "LEI16@24000",
+            "-c", "1",
+        ]
+        try convert.run()
+        convert.waitUntilExit()
+        guard convert.terminationStatus == 0,
+              FileManager.default.fileExists(atPath: output.path) else {
+            throw VoiceLibraryError.systemVoiceUnavailable(voice)
+        }
+    }
 }
 
 enum VoiceLibraryError: LocalizedError {
@@ -312,6 +383,7 @@ enum VoiceLibraryError: LocalizedError {
     case conversionFailed(String)
     case denoiserMissing
     case processingFailed(String)
+    case systemVoiceUnavailable(String)
 
     var errorDescription: String? {
         switch self {
@@ -327,6 +399,8 @@ enum VoiceLibraryError: LocalizedError {
             return "应用的本地降噪资源不完整"
         case .processingFailed(let details):
             return "音频降噪失败：\(details)"
+        case .systemVoiceUnavailable(let voice):
+            return "系统音色“\(voice)”不可用，请在系统语音设置中安装中文语音"
         }
     }
 }

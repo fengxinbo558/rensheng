@@ -14,7 +14,15 @@ struct VoiceLibrarySelfTest {
         }
 
         let firstLibrary = VoiceLibrary()
-        try require(firstLibrary.profiles.count == 1, "首次载入应只有内置音色")
+        try require(firstLibrary.profiles.count == 2, "首次载入应只有系统男女声")
+        try require(
+            firstLibrary.profiles.map(\.name).sorted() == ["系统女声", "系统男声"],
+            "系统男女声名称不完整"
+        )
+        try require(
+            firstLibrary.profiles.allSatisfy { $0.isBuiltIn && FileManager.default.fileExists(atPath: $0.referenceAudioPath) },
+            "系统男女声参考音频不存在"
+        )
 
         let created = try firstLibrary.createVoice(
             name: "自动测试音色",
@@ -39,7 +47,7 @@ struct VoiceLibrarySelfTest {
         try require(firstLibrary.selectedVoiceID == created.id, "新音色应自动选中")
 
         let secondLibrary = VoiceLibrary()
-        try require(secondLibrary.profiles.count == 2, "重新载入后应保留自定义音色")
+        try require(secondLibrary.profiles.count == 3, "重新载入后应保留系统男女声和自定义音色")
         try require(secondLibrary.selectedProfile.id == created.id, "重新载入后应恢复选择")
 
         let info = try audioInfo(for: created.referenceAudioURL)

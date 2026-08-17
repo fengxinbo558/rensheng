@@ -350,25 +350,20 @@ struct ContentView: View {
                             .buttonStyle(.borderedProminent)
 
                             if !selectedVoice.isBuiltIn {
-                                Menu("音色设置") {
-                                    if selectedVoice.originalAudioURL != nil {
-                                        Button("试听原录音") {
-                                            model.playOriginalReference(selectedVoice)
-                                        }
-                                    }
-                                    Divider()
-                                    Button("删除这个音色", role: .destructive) {
-                                        voiceToDelete = selectedVoice
-                                        showingDeleteConfirmation = true
-                                    }
+                                Button(role: .destructive) {
+                                    voiceToDelete = selectedVoice
+                                    showingDeleteConfirmation = true
+                                } label: {
+                                    Label("删除", systemImage: "trash")
                                 }
+                                .accessibilityLabel("删除当前自定义音色")
                             }
                             Spacer()
                         }
 
                         HStack(spacing: 6) {
                             Image(systemName: selectedVoice.isBuiltIn ? "speaker.wave.2" : "person.wave.2")
-                            Text(selectedVoice.isBuiltIn ? "内置测试音色" : "自定义音色 · 资料仅保存在本机")
+                            Text(selectedVoice.isBuiltIn ? "系统音色 · 参考音频保存在本机" : "自定义音色 · 资料仅保存在本机")
                             Spacer()
                             Text("共 \(voiceLibrary.profiles.count) 个音色")
                         }

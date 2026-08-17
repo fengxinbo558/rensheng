@@ -15,7 +15,8 @@
 - 完成后自动生成 WAV、M4A 和 MP3，可直接导出到指定位置并发给没安装本应用的人播放
 - 播放、暂停、停止和 0.1×–3.0× 调速，步进 0.1×
 - 高级编辑默认折叠；需要时可切换自然讲解／逐字朗读、对照原文、修改单段朗读稿、恢复原文、调整节奏或只重做一段
-- 录制或导入自定义音色，自动检查音量、爆音和环境底噪
+- 内置系统女声和系统男声；首次启动会用本机已安装的中文系统语音生成参考音频并缓存
+- 录制或导入自定义音色，自动检查音量、爆音和环境底噪；自定义音色可在声音选择旁直接删除
 - 干净录音优先保留原声细节；明显底噪时自动使用清理版
 - 根据本机内存和本地资源自动选择生成引擎
 
@@ -44,6 +45,7 @@ spike/packaging/cli-swiftui-probe/build/声音导演.app
 
 ```text
 ~/Library/Application Support/LocalAudioProbe/Voices/
+~/Library/Application Support/LocalAudioProbe/BuiltInVoices/
 ~/Library/Application Support/LocalAudioProbe/Projects/
 ~/Library/Application Support/LocalAudioProbe/voices.json
 ~/Music/本地音频概览/

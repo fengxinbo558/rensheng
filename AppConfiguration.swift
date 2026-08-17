@@ -65,6 +65,13 @@ enum ProbeConfiguration {
         applicationSupportDirectory.appendingPathComponent("Voices", isDirectory: true)
     }
 
+    /// References generated from the Mac's installed Chinese system voices.
+    /// They are kept separate from user recordings so the built-in choices can
+    /// never be mistaken for, or removed with, a custom voice.
+    static var builtInVoicesDirectory: URL {
+        applicationSupportDirectory.appendingPathComponent("BuiltInVoices", isDirectory: true)
+    }
+
     static var voicesIndexURL: URL {
         applicationSupportDirectory.appendingPathComponent("voices.json")
     }
