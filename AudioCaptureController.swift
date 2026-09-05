@@ -33,6 +33,17 @@ final class AudioCaptureController: NSObject, ObservableObject {
         panel.allowedContentTypes = [.audio]
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let file = try AVAudioFile(forReading: url)
+            guard file.length > 0 else {
+                status = "选中的音频没有可读取的声音内容"
+                return
+            }
+        } catch {
+            status = "无法读取这个音频文件，请选择 WAV、M4A、MP3 或 AIFF"
+            qualitySummary = nil
+            return
+        }
         stopRecording()
         cleanupTemporaryRecording()
         sourceAudioURL = url

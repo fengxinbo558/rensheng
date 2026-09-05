@@ -16,7 +16,7 @@ struct PublishingProgressView: View {
                 Spacer()
                 Label("本地项目", systemImage: "internaldrive")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(red: 0.23, green: 0.44, blue: 0.78))
+                    .foregroundStyle(StudioPalette.blue)
             }
 
             HStack(spacing: 0) {
@@ -35,12 +35,12 @@ struct PublishingProgressView: View {
         }
         .padding(17)
         .background(
-            Color(red: 0.965, green: 0.976, blue: 0.993),
+            StudioPalette.card.opacity(0.72),
             in: RoundedRectangle(cornerRadius: 16)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 16)
-                .stroke(Color(red: 0.23, green: 0.44, blue: 0.78).opacity(0.14), lineWidth: 1)
+                .stroke(StudioPalette.line.opacity(0.65), lineWidth: 1)
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("声音作品出版进度")
@@ -55,7 +55,7 @@ struct PublishingProgressView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(red: 0.09, green: 0.14, blue: 0.23))
+                    .foregroundStyle(StudioPalette.ink)
                 Text(item.detail)
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)

@@ -261,6 +261,16 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
+                HStack(spacing: 9) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(StudioPalette.blue)
+                    Text("声音导演")
+                        .font(.headline.weight(.bold))
+                        .foregroundStyle(StudioPalette.ink)
+                }
+                .frame(width: 154, alignment: .leading)
+
                 Picker("应用功能", selection: $selectedSection) {
                     ForEach(AppSection.allCases) { section in
                         Text(section.label).tag(section)
@@ -270,13 +280,13 @@ struct ContentView: View {
                 .frame(width: 290)
                 .accessibilityLabel("选择声音作品或快速生成")
                 Spacer()
-                Label("所有处理均在本机完成", systemImage: "lock.fill")
+                Label("本机完成", systemImage: "lock.fill")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(StudioPalette.muted)
             }
             .padding(.horizontal, 18)
-            .padding(.vertical, 11)
-            .background(Color(nsColor: .windowBackgroundColor))
+            .padding(.vertical, 10)
+            .background(StudioPalette.card)
             Divider()
 
             if selectedSection == .projects {
@@ -514,6 +524,9 @@ struct CLTSwiftUIProbeApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                // The product uses a deliberately light, paper-like canvas.
+                // Keep the app palette readable when macOS itself is in Dark Mode.
+                .preferredColorScheme(.light)
         }
         .windowResizability(.contentMinSize)
     }

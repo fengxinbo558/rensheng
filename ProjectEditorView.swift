@@ -22,7 +22,7 @@ struct ProjectEditorView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 16) {
                 hero
 
                 if let project = model.selectedProject, !project.segments.isEmpty {
@@ -43,11 +43,11 @@ struct ProjectEditorView: View {
                 statusBar
             }
             .frame(maxWidth: 920)
-            .padding(.horizontal, 28)
-            .padding(.vertical, 22)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
             .frame(maxWidth: .infinity)
         }
-        .background(Color(red: 0.972, green: 0.979, blue: 0.991))
+        .background(StudioPalette.canvas)
         .onAppear {
             model.setDefaultVoiceIfNeeded(voiceLibrary.selectedProfile.id)
             syncSourceExpansion()
@@ -60,15 +60,25 @@ struct ProjectEditorView: View {
 
     private var hero: some View {
         HStack(alignment: .top, spacing: 18) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .fill(StudioPalette.blue)
+                Image(systemName: "waveform.and.mic")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 50, height: 50)
+
             VStack(alignment: .leading, spacing: 7) {
                 Text("声音导演 · 私人声音出版台")
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .tracking(1.2)
                     .foregroundStyle(Color(red: 0.23, green: 0.44, blue: 0.78))
                 Text(heroTitle)
-                    .font(.system(size: 29, weight: .semibold, design: .serif))
+                    .font(.system(size: 27, weight: .semibold, design: .serif))
                     .lineSpacing(2)
                     .lineLimit(2)
+                    .foregroundStyle(StudioPalette.ink)
                 Text(heroSubtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -79,7 +89,8 @@ struct ProjectEditorView: View {
                     .font(.caption.weight(.bold))
                     .padding(.horizontal, 9)
                     .padding(.vertical, 5)
-                    .background(Color(red: 0.87, green: 0.95, blue: 0.92), in: Capsule())
+                    .foregroundStyle(StudioPalette.ink)
+                    .background(StudioPalette.mint, in: Capsule())
                 Text("普通话 · 最多 30000 字")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
@@ -111,14 +122,11 @@ struct ProjectEditorView: View {
             )
 
             sourceTextHeader(title: "作品原稿")
-            sourceTextEditor(minHeight: 220)
+            sourceTextEditor(minHeight: 190)
             productionControls
         }
-        .padding(18)
-        .background(
-            Color(red: 0.925, green: 0.949, blue: 0.978),
-            in: RoundedRectangle(cornerRadius: 16)
-        )
+        .padding(16)
+        .studioCard(fill: StudioPalette.softBlue)
     }
 
     private func sourceEditor(_ project: NarrationProject) -> some View {
@@ -162,11 +170,7 @@ struct ProjectEditorView: View {
             }
         }
         .padding(17)
-        .background(Color.white.opacity(0.74), in: RoundedRectangle(cornerRadius: 16))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
-        }
+        .studioCard(fill: StudioPalette.card.opacity(0.93))
         .accessibilityHint("展开后可以修改作品名称、原稿和朗读音色")
     }
 
@@ -199,7 +203,7 @@ struct ProjectEditorView: View {
         .lineSpacing(5)
         .scrollContentBackground(.hidden)
         .padding(12)
-        .background(Color.white.opacity(0.94), in: RoundedRectangle(cornerRadius: 12))
+        .background(StudioPalette.card, in: RoundedRectangle(cornerRadius: 12))
         .overlay {
             RoundedRectangle(cornerRadius: 12)
                 .stroke(
@@ -252,11 +256,7 @@ struct ProjectEditorView: View {
             .help(primaryActionHelp)
         }
         .padding(16)
-        .background(Color.white.opacity(0.86), in: RoundedRectangle(cornerRadius: 14))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color(red: 0.23, green: 0.44, blue: 0.78).opacity(0.12), lineWidth: 1)
-        }
+        .studioCard(fill: StudioPalette.card.opacity(0.96), radius: 14)
     }
 
     private var primaryActionLabel: String {
@@ -327,11 +327,7 @@ struct ProjectEditorView: View {
             )
         }
         .padding(18)
-        .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 16))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.black.opacity(0.07), lineWidth: 1)
-        }
+        .studioCard(fill: StudioPalette.card.opacity(0.96))
     }
 
     private func pieceEditor(_ project: NarrationProject) -> some View {
@@ -425,11 +421,7 @@ struct ProjectEditorView: View {
             }
         }
         .padding(18)
-        .background(Color.white.opacity(0.68), in: RoundedRectangle(cornerRadius: 16))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.black.opacity(0.06), lineWidth: 1)
-        }
+        .studioCard(fill: StudioPalette.card.opacity(0.92))
         .accessibilityHint("展开后可以对照原稿、修改朗读文字并单独重做某一段")
     }
 

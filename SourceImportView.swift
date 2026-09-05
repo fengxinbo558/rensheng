@@ -17,8 +17,8 @@ struct SourceImportView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(red: 0.16, green: 0.39, blue: 0.76))
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(StudioPalette.blue)
                     Image(systemName: "waveform.badge.plus")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(.white)
@@ -87,18 +87,13 @@ struct SourceImportView: View {
             }
         }
         .padding(15)
-        .background(
-            isDropTargeted
-                ? Color(red: 0.84, green: 0.91, blue: 0.99)
-                : Color.white.opacity(0.76),
-            in: RoundedRectangle(cornerRadius: 14)
-        )
+        .background(isDropTargeted ? StudioPalette.selectedBlue : StudioPalette.card.opacity(0.90), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(
                     isDropTargeted
-                        ? Color(red: 0.16, green: 0.39, blue: 0.76)
-                        : Color.black.opacity(0.08),
+                        ? StudioPalette.blue
+                        : StudioPalette.line.opacity(0.6),
                     style: StrokeStyle(lineWidth: isDropTargeted ? 2 : 1, dash: [7, 5])
                 )
         }

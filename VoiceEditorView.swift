@@ -17,7 +17,11 @@ struct VoiceEditorView: View {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && !referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && capture.sourceAudioURL != nil
-            && capture.qualitySummary?.level != .poor
+            && capture.qualitySummary != nil
+            // Quiet recordings are recoverable: VoiceLibrary normalizes and
+            // denoises the reference before synthesis. Clipped recordings are
+            // the only quality failure that must be rejected here.
+            && (capture.qualitySummary?.clippingFraction ?? 0) <= 0.0001
             && authorizationConfirmed
             && !capture.isRecording
             && !isSaving
@@ -128,6 +132,16 @@ struct VoiceEditorView: View {
                     }
                     .font(.caption)
                     .foregroundStyle(quality.level == .good ? Color.green : Color.orange)
+
+                    if quality.level == .poor, quality.clippingFraction <= 0.0001 {
+                        Text("音量偏低，但保存时会自动增益和降噪")
+                            .font(.caption)
+                            .foregroundStyle(StudioPalette.blueDeep)
+                    } else if quality.clippingFraction > 0.0001 {
+                        Text("检测到爆音，请降低输入音量后重新录制")
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
                 }
             }
             .padding(4)

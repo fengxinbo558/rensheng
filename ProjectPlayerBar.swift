@@ -19,7 +19,7 @@ struct ProjectPlayerBar: View {
             HStack(spacing: 12) {
                 Image(systemName: "waveform.circle.fill")
                     .font(.title2)
-                    .foregroundStyle(Color(red: 0.18, green: 0.41, blue: 0.78))
+                    .foregroundStyle(StudioPalette.blue)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(summaryTitle)
@@ -60,7 +60,7 @@ struct ProjectPlayerBar: View {
             )
         }
         .padding(14)
-        .background(Color(red: 0.91, green: 0.95, blue: 0.96), in: RoundedRectangle(cornerRadius: 13))
+        .studioCard(fill: StudioPalette.mint, radius: 13)
     }
 
     private var summaryTitle: String {
