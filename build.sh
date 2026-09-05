@@ -20,6 +20,7 @@ REFERENCE_SOURCE="${WORKSPACE_ROOT}/spike/fixtures/voice-clone-v1/data/system-vo
 MP3_ENCODER_SOURCE="${SCRIPT_DIR}/Runtime/MP3Encoder"
 THIRD_PARTY_SOURCE="${SCRIPT_DIR}/ThirdParty"
 APP_ICON_SOURCE="${SCRIPT_DIR}/Assets/AppIcon.png"
+SIGNING_REQUIREMENTS="${SCRIPT_DIR}/CodeSigningRequirements.txt"
 
 case "${BUILD_FLAVOR}" in
   developer|portable) ;;
@@ -36,6 +37,7 @@ for required_path in \
   "${DENOISER_SOURCE}" \
   "${REFERENCE_SOURCE}" \
   "${APP_ICON_SOURCE}" \
+  "${SIGNING_REQUIREMENTS}" \
   "${MP3_ENCODER_SOURCE}/lame" \
   "${MP3_ENCODER_SOURCE}/COPYING" \
   "${MP3_ENCODER_SOURCE}/lame-3.100.tar.gz" \
@@ -121,7 +123,7 @@ swiftc \
   -o "${MACOS_PATH}/LocalAudioProbe"
 
 plutil -lint "${CONTENTS_PATH}/Info.plist"
-codesign --force --deep --sign - "${APP_PATH}"
+codesign --force --deep --sign - --requirements "${SIGNING_REQUIREMENTS}" "${APP_PATH}"
 codesign --verify --deep --strict "${APP_PATH}"
 
 du -sh "${APP_PATH}"

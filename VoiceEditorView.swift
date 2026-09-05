@@ -150,6 +150,9 @@ struct VoiceEditorView: View {
                 .disabled(capture.isRecording)
             Button("试听") { capture.playReference() }
                 .disabled(capture.sourceAudioURL == nil || capture.isRecording)
+            if capture.microphoneAccessNeedsSettings {
+                Button("打开麦克风设置") { capture.openMicrophoneSettings() }
+            }
             Spacer()
             if capture.isRecording {
                 Image(systemName: "record.circle.fill")

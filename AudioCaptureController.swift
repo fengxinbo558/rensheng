@@ -22,6 +22,18 @@ final class AudioCaptureController: NSObject, ObservableObject {
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)
     }
 
+    var microphoneAccessNeedsSettings: Bool {
+        let authorization = AVCaptureDevice.authorizationStatus(for: .audio)
+        return authorization == .denied || authorization == .restricted
+    }
+
+    func openMicrophoneSettings() {
+        guard let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        ) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     func importAudio() {
         let panel = NSOpenPanel()
         panel.title = "选择参考音频"
@@ -115,7 +127,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 }
             }
         case .denied, .restricted:
-            status = "麦克风权限未开启，也可以改用导入音频"
+            status = "麦克风权限未开启，请允许“声音导演”使用麦克风；也可以导入音频"
         @unknown default:
             status = "无法确认麦克风权限，请改用导入音频"
         }
