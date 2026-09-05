@@ -13,20 +13,6 @@ struct VoiceEditorView: View {
 
     private static let readingPrompt = "你好，欢迎使用本地普通话音频概览。我正在录制自己的声音，用于创建只保存在这台电脑上的个人音色。今天天气不错，希望这段清晰自然的朗读可以帮助应用准确地生成普通话语音。"
 
-    private var canSave: Bool {
-        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !referenceText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && capture.sourceAudioURL != nil
-            && capture.qualitySummary != nil
-            // Quiet recordings are recoverable: VoiceLibrary normalizes and
-            // denoises the reference before synthesis. Clipped recordings are
-            // the only quality failure that must be rejected here.
-            && (capture.qualitySummary?.clippingFraction ?? 0) <= 0.0001
-            && authorizationConfirmed
-            && !capture.isRecording
-            && !isSaving
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
@@ -201,13 +187,40 @@ struct VoiceEditorView: View {
             }
             Button("保存音色") { saveVoice() }
                 .buttonStyle(.borderedProminent)
-                .disabled(!canSave)
+                // Keep the action available so a missing field produces a clear
+                // explanation instead of an apparently broken grey button.
+                .disabled(capture.isRecording || isSaving)
                 .keyboardShortcut(.defaultAction)
         }
     }
 
     private func saveVoice() {
-        guard let sourceAudioURL = capture.sourceAudioURL else { return }
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanText = referenceText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanName.isEmpty else {
+            errorMessage = "请先填写音色名称"
+            return
+        }
+        guard !cleanText.isEmpty else {
+            errorMessage = "请填写参考音频对应的朗读文字"
+            return
+        }
+        guard let sourceAudioURL = capture.sourceAudioURL else {
+            errorMessage = "请先录音或导入一段参考音频"
+            return
+        }
+        guard let quality = capture.qualitySummary else {
+            errorMessage = "音频还没有完成检查，请重新导入后再试"
+            return
+        }
+        guard quality.clippingFraction <= 0.0001 else {
+            errorMessage = "这段音频检测到爆音，请降低输入音量后重新录制"
+            return
+        }
+        guard authorizationConfirmed else {
+            errorMessage = "请先确认声音授权"
+            return
+        }
         isSaving = true
         errorMessage = nil
         do {
